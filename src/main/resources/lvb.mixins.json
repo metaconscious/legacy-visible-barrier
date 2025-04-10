@@ -6,7 +6,9 @@
   "mixins": [
   ],
   "client": [
-    "BarrierBlockMixin"
+    "BarrierBlockMixin",
+    "BarrierParticleMixin",
+    "BlockStateMapperMixin"
   ],
   "injectors": {
     "defaultRequire": 1
