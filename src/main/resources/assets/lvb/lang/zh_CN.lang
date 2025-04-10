@@ -1,0 +1,4 @@
+key.category.legacy_visible_barriers=传统可见屏障
+key.toggle_barrier_visibility=切换屏障可见性
+lvb.to_visible=屏障现在可见
+lvb.to_invisible=屏障不再可见
