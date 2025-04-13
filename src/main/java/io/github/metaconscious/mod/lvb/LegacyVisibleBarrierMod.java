@@ -1,6 +1,9 @@
 package io.github.metaconscious.mod.lvb;
 
 import net.fabricmc.api.ModInitializer;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 public class LegacyVisibleBarrierMod implements ModInitializer {
 
@@ -8,6 +11,7 @@ public class LegacyVisibleBarrierMod implements ModInitializer {
     public static final String MOD_NAME = "Legacy Visible Barrier";
     public static final String MOD_VERSION = "1.0";
 
+    private static final Logger LOGGER = LogManager.getLogger();
     private static LegacyVisibleBarrierMod INSTANCE;
 
     private final KeyBindings keyBindings = new KeyBindings();
@@ -26,6 +30,7 @@ public class LegacyVisibleBarrierMod implements ModInitializer {
         // Proceed with mild caution.
         INSTANCE = this;
         keyBindings.init();
+        LOGGER.info("Mod '{}'({}==v{}) has been initialized.", MOD_NAME, MOD_ID, MOD_VERSION);
     }
 
     public KeyBindings getKeyBindings() {
