@@ -17,6 +17,9 @@
   "entrypoints": {
     "main": [
       "io.github.metaconscious.mod.lvb.LegacyVisibleBarrierMod"
+    ],
+    "modmenu": [
+      "io.github.metaconscious.mod.lvb.LegacyVisibleBarrierModMenu"
     ]
   },
   "mixins": [
