@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "lvb",
+  "id": "legacy-visible-barrier",
   "version": "${version}",
   "name": "Legacy Visible Barrier Mod",
   "description": "See where barriers are.",
@@ -12,7 +12,7 @@
     "sources": "https://github.com/metaconscious/legacy-visible-barrier"
   },
   "license": "CC0-1.0",
-  "icon": "assets/lvb/icon.png",
+  "icon": "assets/legacy-visible-barrier/icon.png",
   "environment": "*",
   "entrypoints": {
     "main": [
@@ -23,7 +23,7 @@
     ]
   },
   "mixins": [
-    "lvb.mixins.json"
+    "legacy-visible-barrier.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=0.14.19",

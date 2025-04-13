@@ -7,7 +7,7 @@ import org.apache.logging.log4j.Logger;
 
 public class LegacyVisibleBarrierMod implements ModInitializer {
 
-    public static final String MOD_ID = "lvb";
+    public static final String MOD_ID = "legacy-visible-barrier";
     public static final String MOD_NAME = "Legacy Visible Barrier";
     public static final String MOD_VERSION = "1.0";
 
