@@ -5,7 +5,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class LegacyVisibleBarrierMod implements ModInitializer {
+public final class LegacyVisibleBarrierMod implements ModInitializer {
 
     public static final String MOD_ID = "legacy-visible-barrier";
     public static final String MOD_NAME = "Legacy Visible Barrier";

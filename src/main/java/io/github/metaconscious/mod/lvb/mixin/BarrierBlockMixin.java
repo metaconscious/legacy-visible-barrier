@@ -1,6 +1,6 @@
 package io.github.metaconscious.mod.lvb.mixin;
 
-import io.github.metaconscious.mod.lvb.LegacyVisibleBarrierMod;
+import io.github.metaconscious.mod.lvb.Controllers;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.block.BarrierBlock;
@@ -28,7 +28,7 @@ public class BarrierBlockMixin extends Block {
     @Overwrite
     @Override
     public int getBlockType() {
-        return LegacyVisibleBarrierMod.getInstance().getKeyBindings().getVisibilityViewer().isVisible()
+        return Controllers.VISIBILITY_CONTROLLER.isVisible()
                 ? 3
                 : -1;
     }

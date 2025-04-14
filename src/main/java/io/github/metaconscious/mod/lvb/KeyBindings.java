@@ -22,8 +22,6 @@ public final class KeyBindings {
             "key.category.legacy_visible_barriers"
     );
 
-    private final VisibilityController controller = new VisibilityController();
-
     public void init() {
         KeyBindingHelper.registerKeyBinding(barrierVisibilityTogglingKey);
         LOGGER.info("Key binding registered.");
@@ -31,13 +29,9 @@ public final class KeyBindings {
         LOGGER.info("Keypress event listener registered.");
     }
 
-    public Visibility getVisibilityViewer() {
-        return controller;
-    }
-
     private void onBarrierVisibilityToggled(MinecraftClient minecraftClient) {
         while (barrierVisibilityTogglingKey.wasPressed()) {
-            boolean visibleNow = controller.toggle();
+            boolean visibleNow = Controllers.VISIBILITY_CONTROLLER.toggle();
             if (visibleNow) {
                 minecraftClient.player.sendMessage(TO_VISIBLE);
             } else {
@@ -45,25 +39,6 @@ public final class KeyBindings {
             }
             minecraftClient.worldRenderer.reload();
             LOGGER.debug("The visibility of barriers is '{}' now.", visibleNow ? "visible" : "invisible");
-        }
-    }
-
-    public interface Visibility {
-        boolean isVisible();
-    }
-
-    private static final class VisibilityController implements Visibility {
-
-        private boolean visible = false;
-
-        public boolean toggle() {
-            this.visible = !this.visible;
-            return this.visible;
-        }
-
-        @Override
-        public boolean isVisible() {
-            return visible;
         }
     }
 }

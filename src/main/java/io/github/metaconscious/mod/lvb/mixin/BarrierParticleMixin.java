@@ -1,6 +1,6 @@
 package io.github.metaconscious.mod.lvb.mixin;
 
-import io.github.metaconscious.mod.lvb.LegacyVisibleBarrierMod;
+import io.github.metaconscious.mod.lvb.Controllers;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.particle.BarrierParticle;
@@ -18,7 +18,7 @@ public class BarrierParticleMixin {
 
     @Inject(method = "draw", at = @At("HEAD"), cancellable = true)
     public void draw(BufferBuilder builder, Entity entity, float tickDelta, float g, float h, float i, float j, float k, @NotNull CallbackInfo ci) {
-        if (LegacyVisibleBarrierMod.getInstance().getKeyBindings().getVisibilityViewer().isVisible()) {
+        if (Controllers.VISIBILITY_CONTROLLER.isVisible()) {
             ci.cancel();
         }
     }
