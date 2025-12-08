@@ -12,6 +12,10 @@ Simply use the default key bind `B`, or change it under Controls.
     - [Modrinth](https://modrinth.com/mod/legacy-fabric-api)
     - [curseforge](https://www.curseforge.com/minecraft/mc-mods/legacy-fabric-api)
 
+## For OrnitheMC Loader
+
+- See [here](https://github.com/metaconscious/legacy-visible-barrier/tree/ornithe).
+
 ## Acknowledgments
 
 This project is inspired by [VisibleBarriers](https://github.com/olvend/VisibleBarriers) created by olvend.
