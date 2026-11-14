@@ -1,0 +1,9 @@
+* text=auto eol=lf
+*.java diff=java
+*.gradle diff=java
+*.bat text eol=crlf
+*.jar binary
+*.png binary
+
+# Package shared assets without line-ending conversion.
+shared-resources/src/main/resources/assets/** -text

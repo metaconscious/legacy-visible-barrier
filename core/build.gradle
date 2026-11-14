@@ -1,0 +1,17 @@
+plugins { id 'lvb.java-conventions' }
+
+dependencies { testImplementation 'junit:junit:4.13.2' }
+
+tasks.register('verifyDependencies') {
+    group = 'verification'
+    description = 'Enforces the core module\'s dependency-free production classpath.'
+    doLast {
+        ['compileClasspath', 'runtimeClasspath'].each { name ->
+            if (!configurations.getByName(name).files.empty) {
+                throw new GradleException("Core ${name} must contain only the Java standard library")
+            }
+        }
+    }
+}
+
+tasks.named('check') { dependsOn 'verifyDependencies' }

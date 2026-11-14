@@ -25,3 +25,7 @@ run/
 
 # macos
 *.DS_Store
+
+# Python release and artifact verification tools
+__pycache__/
+*.pyc

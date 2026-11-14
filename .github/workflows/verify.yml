@@ -1,0 +1,73 @@
+name: Verify
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        type: string
+        default: ''
+    outputs:
+      commit:
+        description: The verified source commit.
+        value: ${{ jobs.build.outputs.commit }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release source
+        if: inputs.release_tag != ''
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          python3 tools/release.py validate-tag "$RELEASE_TAG" "$(sed -n 's/^mod_version=//p' gradle.properties)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          git merge-base --is-ancestor HEAD origin/main
+      - name: Record source commit
+        id: source
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            21
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      - name: Build, test and stage both distributions
+        run: xvfb-run -a ./gradlew --no-daemon --max-workers=2 clean build smokeTest stageRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: |
+            build/distributions/legacy-visible-barrier-*.jar
+            build/distributions/release.json
+            build/distributions/SHA512SUMS
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - name: Upload verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-reports
+          path: |
+            core/build/test-results/
+            core/build/reports/tests/
+            build/reports/artifacts.json
+            legacy-fabric/build/reports/smoke-test.txt
+            ornithe/build/reports/smoke-test.txt
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,88 @@
+plugins { id 'lvb.java-conventions' }
+
+version = "${providers.gradleProperty('mod_version').get()}+${project.name}"
+base.archivesName = 'legacy-visible-barrier'
+
+configurations {
+    bundledCore {
+        canBeConsumed = false
+        transitive = false
+    }
+    sharedResources {
+        canBeConsumed = false
+        transitive = false
+    }
+    productionJarElements {
+        canBeConsumed = true
+        canBeResolved = false
+    }
+}
+
+artifacts { productionJarElements tasks.named('remapJar') }
+
+dependencies {
+    implementation project(':core')
+    bundledCore project(':core')
+    sharedResources project(path: ':shared-resources', configuration: 'resourceElements')
+}
+
+tasks.named('processResources', ProcessResources) {
+    dependsOn configurations.sharedResources
+    inputs.property 'version', project.version
+    inputs.property 'minecraftVersion', providers.gradleProperty('minecraft_version')
+    filesMatching('fabric.mod.json') {
+        expand version: project.version,
+                minecraftVersion: providers.gradleProperty('minecraft_version').get()
+    }
+    from({ configurations.sharedResources.collect { zipTree(it) } }) {
+        exclude 'META-INF/**'
+    }
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+}
+
+tasks.named('jar', Jar) {
+    dependsOn configurations.bundledCore
+    from({ configurations.bundledCore.collect { zipTree(it) } }) {
+        exclude 'META-INF/**'
+    }
+    from(rootProject.layout.projectDirectory.file('LICENSE'))
+    manifest.attributes('Implementation-Version': project.version)
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+}
+
+sourceSets {
+    smokeTest {
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+    }
+}
+
+loom {
+    mods {
+        lvb { sourceSet sourceSets.main }
+        lvb_smoke { sourceSet sourceSets.smokeTest }
+    }
+    runs {
+        smokeTest {
+            client()
+            source sourceSets.smokeTest
+            runDir 'build/smoke-test/run'
+            vmArg '-Dlvb.smoke.report=' + layout.buildDirectory.file('reports/smoke-test.txt').get().asFile
+        }
+    }
+}
+
+tasks.named('runSmokeTest', JavaExec) {
+    group = 'verification'
+    description = 'Starts an isolated client to verify initialization, controls and Mixin application.'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
+    timeout = Duration.ofMinutes(5)
+    doFirst {
+        delete layout.buildDirectory.dir('smoke-test/run')
+        mkdir layout.buildDirectory.dir('smoke-test/run')
+    }
+}
+
+tasks.named('runClient', JavaExec) {
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
+}

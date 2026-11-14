@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "lvb",
+  "version": "${version}",
+  "name": "Legacy Visible Barrier",
+  "description": "Toggle the visibility of barrier blocks.",
+  "authors": [
+    "Mark Oven",
+    "DaveyL2013"
+  ],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/legacy-visible-barrier",
+    "sources": "https://github.com/metaconscious/legacy-visible-barrier",
+    "issues": "https://github.com/metaconscious/legacy-visible-barrier/issues"
+  },
+  "license": "CC0-1.0",
+  "icon": "assets/lvb/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "io.github.metaconscious.lvb.legacyfabric.LegacyFabricClient"
+    ]
+  },
+  "mixins": [
+    "lvb-legacy-fabric.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.14.19",
+    "minecraft": "${minecraftVersion}",
+    "java": ">=8",
+    "legacy-fabric-api": ">=1.11.1+1.8.9"
+  }
+}

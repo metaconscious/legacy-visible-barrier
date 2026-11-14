@@ -1,21 +1,47 @@
 # Legacy Visible Barrier
 
-Legacy Visible Barrier is a Legacy Fabric mod for Minecraft 1.8.9.
+A client mod for Minecraft 1.8.9 that renders barrier blocks when visibility is enabled.
+Press **B** to toggle, or rebind the key in **Options → Controls**. A translated chat
+message confirms each toggle.
 
-When toggled, this mod allows you to see barriers the same way you see any other block.
+## Installation
 
-Simply use the default key bind `B`, or change it under Controls.
+Download the artifact matching your platform from
+[Modrinth](https://modrinth.com/mod/legacy-visible-barrier) or
+[GitHub Releases](https://github.com/metaconscious/legacy-visible-barrier/releases),
+and put it in the instance's `mods` directory with its required API.
 
-## Requirements
+| Platform | Artifact suffix | Required API |
+| --- | --- | --- |
+| Legacy Fabric, intermediary generation 1 | `+legacy-fabric.jar` | [Legacy Fabric API](https://modrinth.com/mod/legacy-fabric-api), 1.11.1+1.8.9 or compatible later version |
+| Ornithe, Calamus generation 1 | `+ornithe.jar` | [Ornithe Standard Libraries](https://modrinth.com/mod/osl), 0.16.3 |
 
-- Legacy Fabric API
-    - [Modrinth](https://modrinth.com/mod/legacy-fabric-api)
-    - [curseforge](https://www.curseforge.com/minecraft/mc-mods/legacy-fabric-api)
+Install one variant. Both use mod ID `lvb`. Java 8 is the runtime baseline, and no server
+installation is needed. See the [compatibility matrix](docs/compatibility.md) for loader
+versions and supported environments. Releases before 1.2.0 use their historical filenames.
 
-## For OrnitheMC Loader
+Barriers start hidden each time the client launches. Visibility is retained when changing
+worlds or reconnecting within that process. Visible barriers use a translucent block model
+and suppress the ordinary barrier particles. Collision and world data remain unchanged.
 
-- See [here](https://github.com/metaconscious/legacy-visible-barrier/tree/ornithe).
+## Development
 
-## Acknowledgments
+Install JDK 21, JDK 8, and Python 3.10+, then run:
 
-This project is inspired by [VisibleBarriers](https://github.com/olvend/VisibleBarriers) created by olvend.
+```sh
+./gradlew clean build
+```
+
+The build produces separate remapped JARs in `legacy-fabric/build/libs` and
+`ornithe/build/libs`. The projects share their core logic and assets. Read
+[CONTRIBUTING.md](CONTRIBUTING.md) for development commands and testing,
+[architecture](docs/architecture.md) for module boundaries, and
+[releasing](docs/releasing.md) for publishing.
+
+## License and credits
+
+Released under [CC0-1.0](LICENSE).
+
+Created by Mark Oven, with the Ornithe port contributed by
+[DaveyL2013](https://github.com/DaveyL2013). Inspired by
+[VisibleBarriers](https://github.com/olvend/VisibleBarriers) by olvend.

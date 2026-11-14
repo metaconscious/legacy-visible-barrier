@@ -1,0 +1,28 @@
+plugins {
+    id 'fabric-loom'
+    id 'legacy-looming'
+    id 'lvb.adapter-conventions'
+}
+
+legacyLooming {
+    intermediaryVersion.set(1)
+    useLFIntermediary.set(true)
+}
+
+repositories {
+    exclusiveContent {
+        forRepository { maven { url = 'https://repo.legacyfabric.net/legacyfabric/' } }
+        filter { includeGroupByRegex 'net\\.legacyfabric(\\..*)?' }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings legacy.yarn(minecraft_version, legacy_yarn_build)
+    modImplementation "net.fabricmc:fabric-loader:${legacy_loader_version}"
+    modImplementation "net.legacyfabric.legacy-fabric-api:legacy-fabric-api:${legacy_api_version}"
+}
+
+loom {
+    mixin { defaultRefmapName = 'lvb-legacy-fabric.refmap.json' }
+}

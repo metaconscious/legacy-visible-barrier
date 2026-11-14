@@ -1,0 +1,19 @@
+plugins { id 'base' }
+
+def resourcesJar = tasks.register('resourcesJar', Jar) {
+    from layout.projectDirectory.dir('src/main/resources')
+    archiveBaseName = 'legacy-visible-barrier-resources'
+    destinationDirectory = layout.buildDirectory.dir('libs')
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
+configurations {
+    resourceElements {
+        canBeConsumed = true
+        canBeResolved = false
+    }
+}
+
+artifacts { resourceElements resourcesJar }
+tasks.named('assemble') { dependsOn resourcesJar }
