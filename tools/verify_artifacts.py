@@ -125,7 +125,7 @@ def verify_jar(path, target, base, core_classes, assets):
         refmap = json.loads(jar.read(mixins["refmap"]))
         require(refmap.get("mappings"), "Remapped Mixin references are missing")
 
-        expected_assets = {"assets/" + str(p.relative_to(assets)): p.read_bytes()
+        expected_assets = {"assets/" + p.relative_to(assets).as_posix(): p.read_bytes()
                            for p in assets.rglob("*") if p.is_file()}
         actual_assets = {name for name in names if name.startswith("assets/") and not name.endswith("/")}
         contracted_assets = {
