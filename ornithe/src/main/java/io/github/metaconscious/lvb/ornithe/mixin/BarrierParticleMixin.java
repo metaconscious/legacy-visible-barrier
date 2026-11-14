@@ -15,7 +15,7 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 @Mixin(BarrierParticle.class)
 public class BarrierParticleMixin {
 
-    @Inject(method = "render", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "render", at = @At("HEAD"), cancellable = true, require = 0, expect = 0)
     private void lvb$render(BufferBuilder builder, Entity entity, float tickDelta, float g, float h, float i, float j, float k, CallbackInfo ci) {
         if (OrnitheClient.barriersVisible()) {
             ci.cancel();

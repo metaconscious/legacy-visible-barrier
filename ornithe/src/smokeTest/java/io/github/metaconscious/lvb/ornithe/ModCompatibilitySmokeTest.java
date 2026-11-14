@@ -51,6 +51,10 @@ final class ModCompatibilitySmokeTest {
                 client.gameRenderer.renderWorld(1, System.nanoTime() + 100_000_000L);
             }
             for (int i = 0; i < 4; i++) {
+                if (!RenderingPlugin.enhanced()) {
+                    ClientSmokeTest.awaitNativeTerrain(client, OrnitheClient.barriersVisible());
+                    client.player.pitch = client.player.prevPitch = 28;
+                }
                 RenderSmokeTestProbe.resetModels();
                 RenderSmokeTestProbe.villages = 0;
                 RenderSmokeTestProbe.waypoints = 0;
@@ -61,8 +65,10 @@ final class ModCompatibilitySmokeTest {
                 require(client.crosshairTarget != null && client.crosshairTarget.type == HitResult.Type.BLOCK
                         && new BlockPos(0, 64, 0).equals(client.crosshairTarget.getPos()),
                         "Overlay scene did not select the barrier: " + client.crosshairTarget);
-                require((RenderSmokeTestProbe.barriers > 0) == OrnitheClient.barriersVisible(),
-                        "World overlays changed barrier visibility");
+                if (RenderingPlugin.enhanced()) {
+                    require((RenderSmokeTestProbe.barriers > 0) == OrnitheClient.barriersVisible(),
+                            "World overlays changed barrier visibility");
+                }
                 if (Boolean.getBoolean("lvb.smoke.villages")) {
                     require(RenderSmokeTestProbe.villages > 0, "Village marker did not draw");
                 }

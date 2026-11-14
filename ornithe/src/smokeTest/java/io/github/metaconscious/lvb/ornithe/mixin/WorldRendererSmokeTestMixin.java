@@ -1,6 +1,7 @@
 package io.github.metaconscious.lvb.ornithe.mixin;
 
 import io.github.metaconscious.lvb.ornithe.RenderSmokeTestProbe;
+import io.github.metaconscious.lvb.ornithe.RenderingPlugin;
 import net.minecraft.entity.Entity;
 import net.minecraft.client.render.block.BlockLayer;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -32,6 +33,20 @@ public class WorldRendererSmokeTestMixin {
     private void lvb$terrainInvalidation(CallbackInfo ci) {
         if (RenderSmokeTestProbe.watchTerrain) {
             RenderSmokeTestProbe.invalidations++;
+        }
+    }
+
+    @Inject(method = {"reload()V", "onRegionChanged"}, at = @At("HEAD"))
+    private void lvb$nativeRefresh(CallbackInfo ci) {
+        if (RenderSmokeTestProbe.watchTerrain) RenderSmokeTestProbe.nativeRefreshes++;
+    }
+
+    @Inject(method = "render(Lnet/minecraft/client/render/block/BlockLayer;DILnet/minecraft/entity/Entity;)I", at = @At("RETURN"))
+    private void lvb$nativeSections(BlockLayer layer, double delta, int pass, Entity camera,
+                                    CallbackInfoReturnable<Integer> result) {
+        if (!RenderingPlugin.enhanced() && layer == BlockLayer.TRANSLUCENT) {
+            RenderSmokeTestProbe.nativeSections = result.getReturnValue();
+            RenderSmokeTestProbe.verifyShaderStage(true);
         }
     }
 }

@@ -1,5 +1,9 @@
 package io.github.metaconscious.lvb.ornithe.mixin;
 
+import io.github.metaconscious.lvb.ornithe.RenderingPlugin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.block.BarrierBlock;
@@ -16,6 +20,11 @@ public class BarrierBlockMixin extends Block {
 
     protected BarrierBlockMixin(Material material) {
         super(material);
+    }
+
+    @Inject(method = "getRenderType", at = @At("RETURN"), cancellable = true)
+    private void lvb$nativeModel(CallbackInfoReturnable<Integer> result) {
+        if (RenderingPlugin.nativeVisible()) result.setReturnValue(3);
     }
 
     @Environment(EnvType.CLIENT)

@@ -1,6 +1,7 @@
 package io.github.metaconscious.lvb.legacyfabric;
 
 import com.mojang.blaze3d.platform.GlStateManager;
+import io.github.metaconscious.lvb.core.RenderingPolicy;
 import net.fabricmc.api.ClientModInitializer;
 import net.legacyfabric.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.block.Blocks;
@@ -41,7 +42,7 @@ import java.util.Collections;
 
 /** Exercises the installed client hooks, model tessellation and OpenGL output in a test world. */
 public final class ClientSmokeTest implements ClientModInitializer {
-    private static final BarrierRenderer BARRIERS = new BarrierRenderer();
+    private static BarrierRenderer BARRIERS;
     private static final int WIDTH = 128;
     private static final int HEIGHT = 64;
     private static final BlockPos FIRST = new BlockPos(0, 64, 0);
@@ -75,7 +76,7 @@ public final class ClientSmokeTest implements ClientModInitializer {
                 require(count == 1, "Exactly one toggle control must be registered");
                 require(binding.getDefaultCode() == Keyboard.KEY_B, "Default control must be B");
                 require("key.category.legacy_visible_barriers".equals(binding.getCategory()), "Control category changed");
-                require(Blocks.BARRIER.getRenderLayerType() == RenderLayer.TRANSLUCENT, "Barrier must be translucent");
+                if (RenderingPlugin.state().available()) require(Blocks.BARRIER.getRenderLayerType() == RenderLayer.TRANSLUCENT, "Barrier must be translucent");
                 Class.forName(net.minecraft.client.particle.BarrierParticle.class.getName());
                 Class.forName(net.minecraft.client.BlockStateMapper.class.getName());
                 KeyBinding.onKeyPressed(binding.getCode());
@@ -84,15 +85,18 @@ public final class ClientSmokeTest implements ClientModInitializer {
             require(!binding.wasPressed(), "Queued input outside a world must be consumed");
             SmokeTestReport.record("startup-controls");
             testingWorld = true;
-            verifyWorld(client);
+            SmokeTestReport.record("mode:" + RenderingPlugin.state().mode.name().toLowerCase(java.util.Locale.ROOT));
+            if (RenderingPlugin.enhanced()) {
+                BARRIERS = new BarrierRenderer();
+                verifyWorld(client);
+                verifyRecovery(client);
+            } else {
+                verifyNative(client);
+            }
             Path report = Paths.get(System.getProperty("lvb.smoke.report"));
             Files.createDirectories(report.getParent());
             SmokeTestReport.write(report);
-            Files.write(report, ("PASS: Java " + System.getProperty("java.version")
-                    + "; startup and B control; hidden terrain type; barrier-only pixels and models"
-                    + "; adjacent-face culling; opaque occlusion; foreign GL state and VAO; exception recovery; index thread ownership; mono/stereo pass counts; replaced terrain renderer; zero toggle terrain invalidations"
-                    + "; world overlay scene; block and chunk packets; unload/reload; world switch; resource reload; VBO on/off\n")
-                    .getBytes(StandardCharsets.UTF_8));
+            Files.write(report, "PASS: client rendering contracts verified\n".getBytes(StandardCharsets.UTF_8));
             System.exit(0);
         } catch (Throwable failure) {
             failure.printStackTrace();
@@ -186,6 +190,131 @@ public final class ClientSmokeTest implements ClientModInitializer {
         SmokeTestReport.record("world-switch");
     }
 
+
+    private void verifyNative(MinecraftClient client) throws ReflectiveOperationException {
+
+        openWorld(client);
+        populate(client);
+        boolean cleanProfile = !Boolean.getBoolean("lvb.smoke.missingHook");
+        if (cleanProfile) {
+            require(!(client.worldRenderer instanceof BarrierRenderPass), "Native profile installed the enhanced frame hooks");
+            require(!(client.world.getChunk(0, 0) instanceof BarrierChunk), "Native profile installed the barrier index");
+            require(!((Object) new net.minecraft.client.world.ChunkAssemblyHelper() instanceof TranslucentMesh), "Native profile installed snapshot hooks");
+            require(!((Object) new BufferBuilder(64).new DrawArrayParameters(new int[0], VertexFormats.BLOCK) instanceof VertexOrigin),
+                    "Native profile installed origin hooks");
+            SmokeTestReport.record("native-startup-isolation");
+        } else {
+            require(RenderingPlugin.state().mode == RenderingPolicy.Mode.NATIVE, "Missing hook did not select native mode");
+            SmokeTestReport.record("missing-hook-recovery");
+        }
+        if (RenderingPlugin.state().mode == RenderingPolicy.Mode.OFF) {
+            KeyBinding.onKeyPressed(binding.getCode());
+            ClientTickEvents.END_CLIENT_TICK.invoker().onEndTick(client);
+            require(!LegacyFabricClient.barriersVisible() && Blocks.BARRIER.getBlockType() == -1,
+                    "Off mode changed vanilla visibility");
+            SmokeTestReport.record("off-controls");
+            return;
+        }
+        client.gameRenderer.tick();
+        client.gameRenderer.renderWorld(1, System.nanoTime() + 100_000_000L);
+        for (boolean vbo : new boolean[]{false, true}) {
+            client.options.vbo = vbo;
+            client.worldRenderer.reload();
+            byte[] hidden = frame(client, 0, 0);
+            RenderSmokeTestProbe.nativeRefreshes = 0;
+            RenderSmokeTestProbe.watchTerrain = true;
+            toggle(client);
+            require(RenderSmokeTestProbe.nativeRefreshes == 1, "Native toggle must refresh exactly once");
+            RenderSmokeTestProbe.watchTerrain = false;
+            requireBarrierPixels(hidden, frame(client, 3, 64));
+            awaitNativeTerrain(client, true);
+            toggle(client);
+            awaitNativeTerrain(client, false);
+            require(Arrays.equals(hidden, frame(client, 0, 0)), "Native toggle did not hide barrier pixels");
+            RenderSmokeTestProbe.nativeRefreshes = 0;
+            RenderSmokeTestProbe.watchTerrain = true;
+            KeyBinding.onKeyPressed(binding.getCode());
+            KeyBinding.onKeyPressed(binding.getCode());
+            ClientTickEvents.END_CLIENT_TICK.invoker().onEndTick(client);
+            require(!LegacyFabricClient.barriersVisible() && RenderSmokeTestProbe.nativeRefreshes == 0,
+                    "Two cancelling clicks must not rebuild native terrain");
+            RenderSmokeTestProbe.watchTerrain = false;
+        }
+        SmokeTestReport.record("native-toggles-vbo-on-off");
+        toggle(client);
+        client.reloadResources();
+        requireBarrierPixels(frameHiddenReference(client), frame(client, 3, 64));
+        awaitNativeTerrain(client, true);
+        SmokeTestReport.record("resource-reload");
+        openWorld(client);
+        populate(client);
+        require(LegacyFabricClient.barriersVisible(), "World change reset visibility intent");
+        awaitNativeTerrain(client, true);
+        SmokeTestReport.record("world-switch");
+        client.world.setBlockState(new BlockPos(0, 64, 1), Blocks.STAINED_GLASS.getDefaultState(), 2);
+        client.world.setBlockState(new BlockPos(1, 64, 1), Blocks.WATER.getDefaultState(), 2);
+        for (int i = 0; i < 5; i++) client.gameRenderer.renderWorld(1, System.nanoTime() + 100_000_000L);
+        require(GL11.glGetError() == GL11.GL_NO_ERROR, "Native translucent scene produced an OpenGL error");
+        SmokeTestReport.record("native-translucent-scene");
+        client.world.setBlockState(new BlockPos(0, 64, 1), Blocks.AIR.getDefaultState(), 2);
+        client.world.setBlockState(new BlockPos(1, 64, 1), Blocks.AIR.getDefaultState(), 2);
+        ModCompatibilitySmokeTest.verify(client, () -> toggle(client));
+    }
+
+    private byte[] frameHiddenReference(MinecraftClient client) {
+        toggle(client);
+        byte[] hidden = frame(client, 0, 0);
+        toggle(client);
+        return hidden;
+    }
+
+    static void awaitNativeTerrain(MinecraftClient client, boolean visible) {
+        client.player.yaw = client.player.prevYaw = 180;
+        client.player.pitch = client.player.prevPitch = 20;
+        long deadline = System.nanoTime() + 5_000_000_000L;
+        do {
+            client.gameRenderer.renderWorld(1, System.nanoTime() + 100_000_000L);
+            if ((RenderSmokeTestProbe.nativeSections > 0) == visible) break;
+        } while (System.nanoTime() < deadline);
+        require((RenderSmokeTestProbe.nativeSections > 0) == visible, "Native terrain visibility did not converge");
+        require(RenderSmokeTestProbe.barrierPasses == 0, "Enhanced drawing ran in native mode");
+    }
+
+    private void verifyRecovery(MinecraftClient client) throws InterruptedException {
+        openWorld(client);
+        populate(client);
+        frame(client, 3, 64);
+        int[] before = RenderStateSmokeTest.glState();
+        RenderSmokeTestProbe.modelAction = () -> RenderSmokeTestProbe.failLightmap = true;
+        BarrierRenderPass pass = (BarrierRenderPass) client.worldRenderer;
+        pass.lvb$beginBarriers(client.player, 1);
+        pass.lvb$endBarriers();
+        require(Arrays.equals(before, RenderStateSmokeTest.glState()), "Recovery leaked graphics state");
+        require(!RenderingPlugin.enhanced(), "Failed enhanced backend was not latched off");
+        RenderSmokeTestProbe.nativeRefreshes = 0;
+        RenderSmokeTestProbe.watchTerrain = true;
+        ClientTickEvents.END_CLIENT_TICK.invoker().onEndTick(client);
+        require(RenderingPlugin.state().nativeVisible(), "Contained failure did not preserve visibility in native mode");
+        require(RenderSmokeTestProbe.nativeRefreshes == 1, "Handover must refresh terrain exactly once");
+        ClientTickEvents.END_CLIENT_TICK.invoker().onEndTick(client);
+        require(RenderSmokeTestProbe.nativeRefreshes == 1, "Handover was retried");
+        RenderSmokeTestProbe.watchTerrain = false;
+        RenderSmokeTestProbe.resetModels();
+        awaitNativeTerrain(client, true);
+        requireBarrierPixels(frameHiddenReference(client), frame(client, 3, 64));
+        SmokeTestReport.record("runtime-native-handover");
+        Thread worker = new Thread(() -> RenderingPlugin.report(RenderingPolicy.Failure.MODEL,
+                new RenderSmokeTestProbe.InjectedFailure()));
+        worker.start();
+        worker.join(5000);
+        require(!worker.isAlive(), "Failure publication did not complete");
+        ClientTickEvents.END_CLIENT_TICK.invoker().onEndTick(client);
+        require(RenderingPlugin.state().mode == RenderingPolicy.Mode.UNAVAILABLE
+                        && !LegacyFabricClient.barriersVisible() && Blocks.BARRIER.getBlockType() == -1,
+                "Shared failure must stop visualization and restore vanilla particles");
+        SmokeTestReport.record("shared-failure-unavailable");
+    }
+
     private void openWorld(MinecraftClient client) {
         ClientPlayNetworkHandler network = new ClientPlayNetworkHandler(client, null,
                 new ClientConnection(NetworkSide.CLIENTBOUND), client.getSession().getProfile());
@@ -221,7 +350,8 @@ public final class ClientSmokeTest implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.invoker().onEndTick(client);
         require(LegacyFabricClient.barriersVisible() != previous, "B did not toggle visibility");
         require(!binding.wasPressed(), "B was not consumed");
-        require(Blocks.BARRIER.getBlockType() == -1, "Barriers entered terrain meshes");
+        require(Blocks.BARRIER.getBlockType() == (RenderingPlugin.nativeVisible() ? 3 : -1),
+                "Barrier terrain type disagrees with the effective mode");
     }
 
     private static void applyPacket(Chunk chunk, ChunkDataS2CPacket packet) {
@@ -320,7 +450,19 @@ public final class ClientSmokeTest implements ClientModInitializer {
         RenderSmokeTestProbe.watchModels = true;
         final TranslucentBatch capturedTerrain = translucent;
         try {
-            if (!referenceOrder) {
+            if (RenderingPlugin.state().mode == RenderingPolicy.Mode.NATIVE) {
+                prepareTranslucent(buffer);
+                buffer.begin(GL11.GL_QUADS, VertexFormats.BLOCK);
+                buffer.offset(-client.player.x, -client.player.y, -client.player.z);
+                for (BlockPos pos : new BlockPos[]{FIRST, SECOND, OCCLUDED}) {
+                    models.renderBlock(Blocks.BARRIER.getDefaultState(), pos, client.world, buffer);
+                }
+                buffer.offset(0, 0, 0);
+                buffer.sortQuads(0, 0, 0);
+                client.gameRenderer.enableLightmap();
+                terrain.draw();
+                client.gameRenderer.disableLightmap();
+            } else if (!referenceOrder) {
                 BARRIERS.renderWithTerrain(client, client.player, 1,
                         () -> capturedTerrain == null ? Collections.emptyList() : Collections.singletonList(capturedTerrain));
             }

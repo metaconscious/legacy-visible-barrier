@@ -5,14 +5,18 @@ surface is defined in [docs/compatibility.md](docs/compatibility.md).
 
 ## [1.3.0] - Unreleased
 
-- Eliminate terrain reloads and screen flicker when toggling barrier visibility.
+- Eliminate toggle-triggered terrain reloads and screen flicker in enhanced mode.
+- Add native compatibility and off modes, selected before Mixin transformation. Native
+  mode uses coalesced section updates, with an optional full-reload refresh policy.
+- Recover from missing enhanced hooks and contained rendering failures by switching
+  to native mode; report shared model failures as visualization unavailable.
 - Build barrier geometry separately and share translucent draw ordering with existing
   terrain vertices in both adapters, preserving water and glass blending.
 - Track barriers through block changes, chunk data updates, unloads, and world changes.
 - Preserve lightmap, color, vertex-array and buffer state around barrier drawing,
   including foreign VAOs and element buffers.
-- Enforce client-thread index access and non-reentrant rendering; recover the next
-  batch after model or upload failures while restoring graphics state.
+- Enforce client-thread index access and non-reentrant rendering; restore graphics
+  state before recovery and keep rendering workers separate from mode decisions.
 - Keep the barrier frame hook reachable when a mod replaces or cancels terrain drawing.
 - Retain compiled vertex origins, shader attributes and sprite ordering with OptiFine;
   restore atlas bindings after multi-texture uploads.

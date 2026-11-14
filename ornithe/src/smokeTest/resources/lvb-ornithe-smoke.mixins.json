@@ -9,9 +9,11 @@
     "VillageMarkerSmokeTestMixin",
     "WaypointSmokeTestMixin",
     "BarrierRendererSmokeTestMixin",
-    "GameRendererSmokeTestMixin"
+    "GameRendererSmokeTestMixin",
+    "NativeConflictSmokeTestMixin"
   ],
   "injectors": {
     "defaultRequire": 1
-  }
+  },
+  "plugin": "io.github.metaconscious.lvb.ornithe.SmokeTestPlugin"
 }

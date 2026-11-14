@@ -2,3 +2,6 @@ key.category.legacy_visible_barriers=傳統可見屏障
 key.toggle_barrier_visibility=切換屏障可見性
 lvb.to_visible=屏障現在可見
 lvb.to_invisible=屏障不再可見
+lvb.mode_native=已切換至原生屏障算繪；地形將逐步更新
+lvb.unavailable=屏障視覺化無法使用
+lvb.disabled=屏障視覺化已停用

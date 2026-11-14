@@ -14,10 +14,15 @@ FEATURES = {
     "ornithe": {"villages", "waypoints", "axolotlOutlines", "miningProgress"},
 }
 BASE_ASSERTIONS = {
-    "startup-controls", "barrier-pixels-vbo-on-off", "zero-toggle-terrain-invalidations",
+    "startup-controls", "mode:enhanced", "runtime-native-handover", "shared-failure-unavailable",
+    "barrier-pixels-vbo-on-off", "zero-toggle-terrain-invalidations",
     "batch-failure-recovery", "index-thread-ownership", "foreign-gl-state-and-failure",
     "camera-pass-counts", "empty-camera-pass-counts", "block-chunk-lifecycle",
     "resource-reload", "world-switch", "translucent-neighbor-pixels", "shared-terrain-submission",
+}
+NATIVE_ASSERTIONS = {
+    "startup-controls", "mode:native", "native-startup-isolation", "native-toggles-vbo-on-off",
+    "resource-reload", "world-switch", "native-translucent-scene",
 }
 OPTION_FILES = {"options.txt", "optionsof.txt", "optionsshaders.txt"}
 
@@ -45,9 +50,11 @@ def validate_client(result):
     runtime = client.get("runtime", {})
     if not all(runtime.get(key) for key in ("java.version", "lwjgl", "gl.version")):
         return "Incomplete runtime identity"
-    required = BASE_ASSERTIONS | {"feature:" + p.split(".")[-1].split("=")[0]
-                                  for p in result["properties"] if p.endswith("=true")}
-    if runtime.get("vao") in ("core", "arb"):
+    mode = result.get("render_mode", "enhanced")
+    required = (NATIVE_ASSERTIONS if mode == "native" else BASE_ASSERTIONS) | {
+        "feature:" + p.split(".")[-1].split("=")[0] for p in result["properties"] if p.endswith("=true")
+    }
+    if mode == "enhanced" and runtime.get("vao") in ("core", "arb"):
         required.add("foreign-vao")
     if result.get("shader_pack"):
         required.add("shader-pack-active")
@@ -60,9 +67,12 @@ def is_mod(jar):
         return "fabric.mod.json" in archive.namelist()
 
 
-def launch(manifest, profile, mods, java=None, properties=(), config=None, options=(), shader_pack=None):
+def launch(manifest, profile, mods, java=None, properties=(), config=None, options=(), shader_pack=None,
+           render_mode="enhanced", native_refresh="dirty"):
     data = json.loads(manifest.read_text(encoding="utf-8"))
     validate_properties(data["platform"], properties)
+    if render_mode not in ("enhanced", "native") or native_refresh not in ("dirty", "reload"):
+        raise ValueError("Unsupported rendering mode or refresh policy")
     if any(p.name not in OPTION_FILES for p in options) or len({p.name for p in options}) != len(options):
         raise ValueError("Only distinct Minecraft options files may be supplied")
     profile.mkdir(parents=True)  # A fresh directory prevents stale reports and mod caches.
@@ -123,7 +133,8 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
     command = [executable, "-Xmx1G", f"-Djava.library.path={native_dir}",
                f"-Dorg.lwjgl.librarypath={native_dir}", "-Dfabric.disableErrorGui=true",
                "-Dfabric.development=false", "-Dlog4j2.formatMsgNoLookups=true",
-               f"-Dlvb.smoke.report={report}", *[f"-D{p}" for p in properties],
+               f"-Dlvb.smoke.report={report}", f"-Dlvb.renderMode={render_mode}",
+               f"-Dlvb.nativeRefresh={native_refresh}", *[f"-D{p}" for p in properties],
                *([f"-Dlvb.smoke.shaderPack={shader_pack.name}"] if shader_pack else []),
                "-cp", os.pathsep.join(classpath), "net.fabricmc.loader.impl.launch.knot.KnotClient",
                "--version", "1.8.9", "--gameDir", str(profile), "--assetsDir", data["assets"],
@@ -133,7 +144,8 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
               "mapping": data["mapping"], "version": data["version"],
               "runtime_artifacts": [{"file": Path(p).name, "sha256": digest(Path(p))}
                                     for p in classpath + data["natives"]],
-              "configuration_before": settings_before, "properties": list(properties)}
+              "configuration_before": settings_before, "properties": list(properties),
+              "render_mode": render_mode, "native_refresh": native_refresh}
     if shader_pack:
         result["shader_pack"] = {"file": shader_pack.name, "sha256": digest(shader_pack)}
     with (profile / "console.log").open("w", encoding="utf-8") as log:
@@ -169,6 +181,8 @@ def main():
     parser.add_argument("--java", help="Java executable; defaults to the build's Java 8 launcher")
     parser.add_argument("--shader-pack", type=Path, help="Shader ZIP to install, select and verify with OptiFine")
     parser.add_argument("--property", action="append", default=[], help="Optional lvb.smoke feature assertion")
+    parser.add_argument("--render-mode", choices=("enhanced", "native"), default="enhanced")
+    parser.add_argument("--native-refresh", choices=("dirty", "reload"), default="dirty")
     args = parser.parse_args()
     try:
         validate_properties(args.platform, args.property)
@@ -180,7 +194,8 @@ def main():
     manifest = root / args.platform / "build/mod-compatibility/launch.json"
     return launch(manifest, args.profile.resolve(), [p.resolve() for p in args.mod],
                   args.java, args.property, args.config.resolve() if args.config else None,
-                  [p.resolve() for p in args.options], args.shader_pack.resolve() if args.shader_pack else None)
+                  [p.resolve() for p in args.options], args.shader_pack.resolve() if args.shader_pack else None,
+                  args.render_mode, args.native_refresh)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
 package io.github.metaconscious.lvb.legacyfabric.mixin;
 
+import io.github.metaconscious.lvb.legacyfabric.RenderingPlugin;
+import io.github.metaconscious.lvb.core.RenderingPolicy;
 import io.github.metaconscious.lvb.legacyfabric.TranslucentBatch;
 import io.github.metaconscious.lvb.legacyfabric.VertexOrigin;
 import net.minecraft.client.render.BufferBuilder;
@@ -19,13 +21,19 @@ public class BufferBuilderMixin {
 
     @Inject(method = "method_9727", at = @At("RETURN"))
     private void lvb$captureOrigin(CallbackInfoReturnable<BufferBuilder.DrawArrayParameters> ci) {
-        ((VertexOrigin) ci.getReturnValue()).lvb$setOrigin(-offsetX, -offsetY, -offsetZ);
+        if (!RenderingPlugin.enhancedMode()) return;
+        if (ci.getReturnValue() instanceof VertexOrigin) {
+            ((VertexOrigin) ci.getReturnValue()).lvb$setOrigin(-offsetX, -offsetY, -offsetZ);
+        } else {
+            RenderingPlugin.report(RenderingPolicy.Failure.ENHANCED,
+                    new IllegalStateException("Vertex snapshot has no origin capability"));
+        }
     }
 
     @Dynamic("OptiFine adds the multi-texture range uploader to BufferBuilder")
     @Inject(method = "draw(II)V", at = @At("HEAD"), cancellable = true, require = 0, remap = false)
     private void lvb$textureRange(int first, int end, CallbackInfo ci) {
-        if ((Object) this instanceof TranslucentBatch) {
+        if (RenderingPlugin.enhancedMode() && (Object) this instanceof TranslucentBatch) {
             ((TranslucentBatch) (Object) this).drawTextureRange(first, end);
             ci.cancel();
         }

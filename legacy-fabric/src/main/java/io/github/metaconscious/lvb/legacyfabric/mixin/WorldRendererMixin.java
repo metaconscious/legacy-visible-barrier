@@ -1,5 +1,7 @@
 package io.github.metaconscious.lvb.legacyfabric.mixin;
 
+import io.github.metaconscious.lvb.legacyfabric.RenderingPlugin;
+import io.github.metaconscious.lvb.core.RenderingPolicy;
 import io.github.metaconscious.lvb.legacyfabric.BarrierRenderPass;
 import io.github.metaconscious.lvb.legacyfabric.BarrierRenderer;
 import io.github.metaconscious.lvb.legacyfabric.LegacyFabricClient;
@@ -18,13 +20,14 @@ import java.util.List;
 
 @Mixin(WorldRenderer.class)
 public class WorldRendererMixin implements BarrierRenderPass {
-    @Unique private final BarrierRenderer lvb$renderer = new BarrierRenderer();
+    @Unique private BarrierRenderer lvb$renderer;
     @Unique private Entity lvb$camera;
     @Unique private double lvb$tickDelta;
     @Unique private boolean lvb$submitted;
 
     @Override
     public void lvb$beginBarriers(Entity camera, double tickDelta) {
+        if (!RenderingPlugin.enhanced()) return;
         lvb$camera = camera;
         lvb$tickDelta = tickDelta;
         lvb$submitted = false;
@@ -34,16 +37,25 @@ public class WorldRendererMixin implements BarrierRenderPass {
     public void lvb$endBarriers() {
         Entity camera = lvb$camera;
         lvb$camera = null;
+        if (!RenderingPlugin.enhanced()) {
+            lvb$renderer = null;
+            return;
+        }
         if (!lvb$submitted && camera != null) {
-            lvb$renderer.render(MinecraftClient.getInstance(), camera, lvb$tickDelta);
+            try {
+                lvb$renderer().render(MinecraftClient.getInstance(), camera, lvb$tickDelta);
+            } catch (BarrierRenderer.Failure failure) {
+                RenderingPlugin.report(failure.kind, failure);
+                lvb$renderer = null;
+            }
         }
     }
 
     @Redirect(method = "renderLayer(Lnet/minecraft/client/render/RenderLayer;)V",
             at = @At(value = "INVOKE",
-                    target = "Lnet/minecraft/client/render/world/AbstractChunkRenderManager;render(Lnet/minecraft/client/render/RenderLayer;)V"))
+                    target = "Lnet/minecraft/client/render/world/AbstractChunkRenderManager;render(Lnet/minecraft/client/render/RenderLayer;)V"), require = 0, expect = 0, allow = 1)
     private void lvb$orderedTerrain(AbstractChunkRenderManager list, RenderLayer layer) {
-        if (layer != RenderLayer.TRANSLUCENT || lvb$camera == null) {
+        if (!RenderingPlugin.enhanced() || layer != RenderLayer.TRANSLUCENT || lvb$camera == null) {
             list.render(layer);
             return;
         }
@@ -54,12 +66,32 @@ public class WorldRendererMixin implements BarrierRenderPass {
             list.render(layer);
             return;
         }
-        List<BuiltChunk> chunks = ((ChunkRenderListAccess) list).lvb$chunks();
-        if (lvb$renderer.renderWithTerrain(MinecraftClient.getInstance(), camera, lvb$tickDelta,
-                () -> BarrierRenderer.compiledTerrain(chunks))) {
-            chunks.clear();
-        } else {
+        if (!(list instanceof ChunkRenderListAccess)) {
+            RenderingPlugin.report(RenderingPolicy.Failure.ENHANCED,
+                    new IllegalStateException("Terrain container has no chunk list capability"));
             list.render(layer);
+            return;
         }
+        List<BuiltChunk> chunks = ((ChunkRenderListAccess) list).lvb$chunks();
+        try {
+            if (lvb$renderer().renderWithTerrain(MinecraftClient.getInstance(), camera, lvb$tickDelta,
+                    () -> BarrierRenderer.compiledTerrain(chunks))) {
+                chunks.clear();
+            } else {
+                list.render(layer);
+            }
+        } catch (BarrierRenderer.Failure failure) {
+            RenderingPlugin.report(failure.kind, failure);
+            lvb$renderer = null;
+            // A partially drawn translucent pass cannot be replayed without double blending.
+            if (failure.submitted) chunks.clear();
+            else list.render(layer);
+        }
+    }
+
+    @Unique
+    private BarrierRenderer lvb$renderer() {
+        if (lvb$renderer == null) lvb$renderer = new BarrierRenderer();
+        return lvb$renderer;
     }
 }

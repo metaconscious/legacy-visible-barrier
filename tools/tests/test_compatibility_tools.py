@@ -83,6 +83,21 @@ class CompatibilityTests(unittest.TestCase):
         self.assertIn("shaderPack=shader.zip", (self.profile / "optionsshaders.txt").read_text())
 
 
+    def test_native_mode_requires_independent_native_checks(self):
+        code, result = self.launch(render_mode="native")
+        self.assertEqual(1, code)
+        self.assertIn("mode:native", result["failure"])
+        self.profile = self.root / "native"
+        self.client["assertions"] = sorted(runner.NATIVE_ASSERTIONS)
+        self.client["runtime"]["vao"] = "core"
+        code, result = self.launch(render_mode="native", native_refresh="reload")
+        self.assertEqual(0, code)
+        self.assertEqual("reload", result["native_refresh"])
+        self.profile = self.root / "enhanced"
+        code, result = self.launch()
+        self.assertEqual(1, code)
+        self.assertIn("mode:enhanced", result["failure"])
+
     def test_crashed_client_cannot_pass_with_a_report(self):
         process = self.client_process
         def crash(command, **kwargs):

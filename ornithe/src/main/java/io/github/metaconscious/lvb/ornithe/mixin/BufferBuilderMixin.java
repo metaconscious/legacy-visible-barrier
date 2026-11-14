@@ -1,5 +1,7 @@
 package io.github.metaconscious.lvb.ornithe.mixin;
 
+import io.github.metaconscious.lvb.ornithe.RenderingPlugin;
+import io.github.metaconscious.lvb.core.RenderingPolicy;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import io.github.metaconscious.lvb.ornithe.TranslucentBatch;
 import io.github.metaconscious.lvb.ornithe.VertexOrigin;
@@ -19,13 +21,19 @@ public class BufferBuilderMixin {
 
     @Inject(method = "getState", at = @At("RETURN"))
     private void lvb$captureOrigin(CallbackInfoReturnable<BufferBuilder.State> ci) {
-        ((VertexOrigin) ci.getReturnValue()).lvb$setOrigin(-offsetX, -offsetY, -offsetZ);
+        if (!RenderingPlugin.enhancedMode()) return;
+        if (ci.getReturnValue() instanceof VertexOrigin) {
+            ((VertexOrigin) ci.getReturnValue()).lvb$setOrigin(-offsetX, -offsetY, -offsetZ);
+        } else {
+            RenderingPlugin.report(RenderingPolicy.Failure.ENHANCED,
+                    new IllegalStateException("Vertex snapshot has no origin capability"));
+        }
     }
 
     @Dynamic("OptiFine adds the multi-texture range uploader to BufferBuilder")
     @Inject(method = "draw(II)V", at = @At("HEAD"), cancellable = true, require = 0, remap = false)
     private void lvb$textureRange(int first, int end, CallbackInfo ci) {
-        if ((Object) this instanceof TranslucentBatch) {
+        if (RenderingPlugin.enhancedMode() && (Object) this instanceof TranslucentBatch) {
             ((TranslucentBatch) (Object) this).drawTextureRange(first, end);
             ci.cancel();
         }

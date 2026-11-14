@@ -41,7 +41,7 @@ Useful tasks:
 | `./gradlew :core:test` | Domain and lifecycle tests on Java 8 |
 | `./gradlew testReleaseTools` | Release, artifact and compatibility-runner script tests |
 | `./gradlew verifyArtifacts` | Build and inspect both remapped JARs |
-| `./gradlew smokeTest` | Verify both Java 8 clients, controls, rendering, and chunk lifecycle |
+| `./gradlew smokeTest` | Verify both Java 8 clients in enhanced, native, off and missing-hook profiles |
 | `./gradlew :legacy-fabric:runClient` | Legacy Fabric development client |
 | `./gradlew :ornithe:runClient` | Ornithe development client |
 | `./gradlew stageRelease` | Stage verified JARs and a source/hash manifest from a clean checkout |
@@ -65,13 +65,19 @@ Validate workflow changes with `actionlint`.
 `smokeTest` requires a display. On headless Linux, install Xvfb, `xrandr`, and Mesa OpenGL
 drivers, then run `LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a ./gradlew smokeTest`.
 It uses fresh directories under each adapter's `build`,
-exits automatically, and writes `build/reports/smoke-test.txt` and `client.json` in each adapter. CI runs
-these checks before staging. Test mod classes and resources are excluded from distributions.
+exits automatically, and writes the enhanced report to `build/reports/smoke-test.txt`
+and `client.json` in each adapter. Other profiles write to `build/reports/nativeSmokeTest`,
+`offSmokeTest` and `missingHookSmokeTest`. CI runs these checks before staging. Test mod classes and resources are excluded from distributions.
 
 Client tests compare barrier pixels and water/glass blending against a shared reference
 batch, count geometry and terrain invalidations, exercise
 chunk/world/resource updates, and verify OpenGL state restoration and failure recovery.
-Both terrain backends and mono/anaglyph camera passes are covered. Optional mod fixtures
+VBO and display-list terrain and mono/anaglyph camera passes are covered. Native checks
+verify that enhanced hooks are absent, barrier pixels and compiled meshes follow the
+toggle, and cancelling clicks cause no refresh. Separate fixtures cover a competing
+terrain redirect, contained failure handover and unavailable/off behavior.
+To exercise the explicit full-reload option, run
+`./gradlew :legacy-fabric:runNativeSmokeTest :ornithe:runNativeSmokeTest -PlvbNativeRefresh=reload`. Optional mod fixtures
 check active overlays across toggles and reloads. See [compatibility.md](docs/compatibility.md)
 for the tested combinations.
 
@@ -97,7 +103,11 @@ a newer runtime. Use `--options /path/to/optionsof.txt` and repeat it for `optio
 or `optionsshaders.txt` to seed Minecraft/OptiFine settings. The runner uses the same
 display requirements as `smokeTest`. Reports contain logs, artifact/configuration hashes,
 runtime versions and completed checks. Profiles under `build/` are ignored by Git.
-Re-run the Gradle preparation after changing source code or dependencies.
+Re-run the Gradle preparation after changing source code or dependencies. Use
+`--render-mode native` for the independent native profile and `--native-refresh reload`
+to exercise its full-reload option. The default is enhanced mode with dirty native
+refresh during recovery. The runner explicitly selects the requested mode and requires
+its corresponding client assertions.
 
 With OptiFine/OptiFabric installed, `--shader-pack /path/to/pack.zip` copies and selects
 an external shader pack. The smoke test requires that pack and a shader program to be
@@ -136,8 +146,9 @@ launcher environment:
    across a chunk boundary. Place stone in front of another barrier.
 4. Toggle visibility; confirm the model, translucency, internal-face culling, translated
    feedback, and disappearance of barrier particles while visible.
-   Toggle repeatedly while moving and turning: terrain must remain stable without
-   flicker, and the barrier behind stone must remain occluded.
+   Toggle repeatedly while moving and turning. Enhanced mode must leave terrain stable;
+   native dirty refresh must converge without discarding existing meshes. Full reload
+   can temporarily clear terrain. The barrier behind stone must remain occluded.
 5. Toggle off; confirm ordinary hidden barriers and vanilla particle behavior return.
 6. Rebind the key, reload resources, change worlds, and reconnect. Confirm the binding
    works and visibility is retained. Restart the client and confirm visibility is hidden.

@@ -1,5 +1,6 @@
 package io.github.metaconscious.lvb.legacyfabric.mixin;
 
+import io.github.metaconscious.lvb.legacyfabric.RenderingPlugin;
 import io.github.metaconscious.lvb.legacyfabric.TranslucentBatch;
 import io.github.metaconscious.lvb.legacyfabric.TranslucentMesh;
 import net.minecraft.client.render.BufferBuilder;
@@ -18,11 +19,12 @@ public class TranslucentMeshMixin implements TranslucentMesh {
 
     @Inject(method = "setDrawArrayParameters", at = @At("RETURN"))
     private void lvb$publish(BufferBuilder.DrawArrayParameters state, CallbackInfo ci) {
-        lvb$published = state;
+        if (RenderingPlugin.enhancedMode()) lvb$published = state;
     }
 
     @Override
     public TranslucentBatch lvb$translucentBatch() {
+        if (!RenderingPlugin.enhancedMode()) return null;
         BufferBuilder.DrawArrayParameters state = lvb$published;
         if (state != lvb$cached) {
             lvb$batch = state == null ? null : new TranslucentBatch(state);

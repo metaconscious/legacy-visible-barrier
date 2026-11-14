@@ -2,7 +2,7 @@
 
 A client mod for Minecraft 1.8.9 that renders barrier blocks when visibility is enabled.
 Press **B** to toggle, or rebind the key in **Options → Controls**. A translated chat
-message confirms each toggle.
+message reports visibility or rendering status.
 
 ## Installation
 
@@ -23,8 +23,10 @@ versions and supported environments. Releases before 1.2.0 use their historical 
 Barriers start hidden each time the client launches. Visibility is retained when changing
 worlds or reconnecting within that process. Visible barriers use a translucent block model
 and suppress the ordinary barrier particles. Collision and world data remain unchanged.
-Barriers share the draw order of translucent terrain, including water and glass.
-Toggling adds or removes barrier geometry without reloading or rebuilding terrain.
+The default enhanced renderer shares the draw order of translucent terrain, including
+water and glass, without rebuilding terrain when toggled. A native compatibility mode
+uses the installed terrain renderer and rebuilds sections as visibility changes. See
+[rendering modes and recovery](docs/compatibility.md#rendering-modes) for configuration.
 
 ## Development
 

@@ -75,5 +75,9 @@ jobs:
             build/reports/artifacts.json
             legacy-fabric/build/reports/smoke-test.txt
             ornithe/build/reports/smoke-test.txt
+            legacy-fabric/build/reports/client.json
+            ornithe/build/reports/client.json
+            legacy-fabric/build/reports/*SmokeTest/
+            ornithe/build/reports/*SmokeTest/
           if-no-files-found: ignore
           retention-days: 14

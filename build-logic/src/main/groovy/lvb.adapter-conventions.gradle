@@ -74,6 +74,17 @@ loom {
             vmArg '-Dlvb.smoke.report=' + layout.buildDirectory.file('reports/smoke-test.txt').get().asFile
         }
     }
+    [nativeSmokeTest: [],
+     offSmokeTest: ['-Dlvb.renderMode=off'],
+     missingHookSmokeTest: ['-Dlvb.smoke.missingHook=true']].each { name, arguments ->
+        runs.create(name) {
+            client()
+            source sourceSets.smokeTest
+            runDir "build/${name}/run"
+            vmArg '-Dlvb.smoke.report=' + layout.buildDirectory.file("reports/${name}/smoke.txt").get().asFile
+            arguments.each { vmArg it }
+        }
+    }
 }
 
 tasks.named('runSmokeTest', JavaExec) {
@@ -89,4 +100,21 @@ tasks.named('runSmokeTest', JavaExec) {
 
 tasks.named('runClient', JavaExec) {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
+}
+
+['nativeSmokeTest', 'offSmokeTest', 'missingHookSmokeTest'].each { name ->
+    tasks.named('run' + name.capitalize(), JavaExec) {
+        group = 'verification'
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
+        timeout = Duration.ofMinutes(5)
+        doFirst {
+            delete layout.buildDirectory.dir("${name}/run")
+            mkdir layout.buildDirectory.dir("${name}/run")
+            if (name == 'nativeSmokeTest') {
+                def config = layout.buildDirectory.file("${name}/run/config/lvb.properties").get().asFile
+                config.parentFile.mkdirs()
+                config.text = "renderMode=native\nnativeRefresh=${providers.gradleProperty('lvbNativeRefresh').getOrElse('dirty')}\n"
+            }
+        }
+    }
 }

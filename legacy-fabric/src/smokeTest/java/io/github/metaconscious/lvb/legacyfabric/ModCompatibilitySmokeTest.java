@@ -47,6 +47,10 @@ final class ModCompatibilitySmokeTest {
                 client.gameRenderer.renderWorld(1, System.nanoTime() + 100_000_000L);
             }
             for (int i = 0; i < 4; i++) {
+                if (!RenderingPlugin.enhanced()) {
+                    ClientSmokeTest.awaitNativeTerrain(client, LegacyFabricClient.barriersVisible());
+                    client.player.pitch = client.player.prevPitch = 28;
+                }
                 RenderSmokeTestProbe.resetModels();
                 RenderSmokeTestProbe.hitboxes = 0;
                 RenderSmokeTestProbe.highlights = 0;
@@ -59,8 +63,10 @@ final class ModCompatibilitySmokeTest {
                 require(client.result != null && client.result.type == BlockHitResult.Type.BLOCK
                         && new BlockPos(0, 64, 0).equals(client.result.getBlockPos()),
                         "Overlay scene did not select the barrier: " + client.result);
-                require((RenderSmokeTestProbe.barriers > 0) == LegacyFabricClient.barriersVisible(),
-                        "World overlays changed barrier visibility");
+                if (RenderingPlugin.enhanced()) {
+                    require((RenderSmokeTestProbe.barriers > 0) == LegacyFabricClient.barriersVisible(),
+                            "World overlays changed barrier visibility");
+                }
                 if (Boolean.getBoolean("lvb.smoke.expectHitboxes")) {
                     require(RenderSmokeTestProbe.hitboxes > 0, "Enabled hitbox overlay did not draw");
                 }

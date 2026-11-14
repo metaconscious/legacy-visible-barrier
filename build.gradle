@@ -118,7 +118,9 @@ tasks.register('testReleaseTools', Exec) {
 tasks.register('smokeTest') {
     group = 'verification'
     description = 'Runs both Minecraft clients in isolated directories; requires a display.'
-    dependsOn ':legacy-fabric:runSmokeTest', ':ornithe:runSmokeTest'
+    dependsOn([':legacy-fabric', ':ornithe'].collectMany { adapter ->
+        ['runSmokeTest', 'runNativeSmokeTest', 'runOffSmokeTest', 'runMissingHookSmokeTest'].collect { "${adapter}:${it}" }
+    })
 }
 
 tasks.register('stageRelease', Exec) {

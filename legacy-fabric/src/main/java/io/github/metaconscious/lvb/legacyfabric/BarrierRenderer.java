@@ -2,6 +2,7 @@ package io.github.metaconscious.lvb.legacyfabric;
 
 import com.mojang.blaze3d.platform.GLX;
 import io.github.metaconscious.lvb.core.TranslucentOrder;
+import io.github.metaconscious.lvb.core.RenderingPolicy;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
@@ -32,6 +33,21 @@ public final class BarrierRenderer {
     private Tessellator tessellator;
     private BufferBuilder.DrawArrayParameters empty;
     private boolean rendering;
+    private boolean stateRestored;
+    private boolean submitted;
+    private RenderingPolicy.Failure phase;
+
+    /** Only raised when CPU buffers are discarded and graphics-state cleanup has completed. */
+    public static final class Failure extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+        public final RenderingPolicy.Failure kind;
+        public final boolean submitted;
+        private Failure(RenderingPolicy.Failure kind, boolean submitted, RuntimeException cause) {
+            super("Barrier rendering failed during " + kind, cause);
+            this.kind = kind;
+            this.submitted = submitted;
+        }
+    }
 
     public void render(MinecraftClient client, Entity camera, double tickDelta) {
         renderWithTerrain(client, camera, tickDelta, Collections::emptyList);
@@ -45,17 +61,23 @@ public final class BarrierRenderer {
         if (rendering) {
             throw new IllegalStateException("Barrier rendering is not reentrant");
         }
-        if (!LegacyFabricClient.barriersVisible() || client.world == null) {
+        if (!RenderingPlugin.enhanced() || !LegacyFabricClient.barriersVisible() || client.world == null) {
             return false;
         }
         rendering = true;
+        stateRestored = true;
+        submitted = false;
+        phase = RenderingPolicy.Failure.ENHANCED;
         try {
             return draw(client, camera, tickDelta, terrain);
         } catch (RuntimeException | Error failure) {
             // A failed model or uploader can leave the builder open or partially consumed.
-            // Discard only our CPU batch; preserve the exception and allow the next frame to build anew.
+            // Recovery is possible only after the owned graphics state has been restored.
             tessellator = null;
             empty = null;
+            if (failure instanceof RuntimeException && stateRestored) {
+                throw new Failure(phase, submitted, (RuntimeException) failure);
+            }
             throw failure;
         } finally {
             rendering = false;
@@ -121,8 +143,10 @@ public final class BarrierRenderer {
                     for (BlockPos pos : ((BarrierChunk) chunk).lvb$barriers()) {
                         if (frustum.isBoxInFrustum(pos.getX(), pos.getY(), pos.getZ(),
                                 pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1)) {
+                            phase = RenderingPolicy.Failure.MODEL;
                             models.getModelRenderer().render(client.world, models.getModel(state, client.world, pos),
                                     state, pos, buffer);
+                            phase = RenderingPolicy.Failure.ENHANCED;
                         }
                     }
                 }
@@ -144,17 +168,21 @@ public final class BarrierRenderer {
         for (int i = 0; i < batches.size(); i++) {
             batches.get(i).appendOrder(order, i, cameraX, cameraY, cameraZ);
         }
+        if (!RenderingPlugin.enhanced()) return false;
         // The caller owns blend, fog, depth, atlas and projection state.
+        stateRestored = false;
         renderState.capture();
         try {
             GL11.glMatrixMode(GL11.GL_MODELVIEW);
             client.gameRenderer.enableLightmap();
             order.draw((batch, first, count) -> {
                 renderState.bindAtlas();
+                submitted = true;
                 batches.get(batch).draw(first, count, cameraX, cameraY, cameraZ);
             });
         } finally {
             renderState.restore(client);
+            stateRestored = true;
         }
         return true;
     }

@@ -63,7 +63,7 @@ class ArtifactTests(unittest.TestCase):
             config["refmap"]: b'{"mappings":{"fixture":{}}}',
         })
         entrypoint = json.loads(metadata)["entrypoints"]["client"][0].replace(".", "/")
-        for name in [entrypoint] + [config["package"].replace(".", "/") + "/" + mixin for mixin in config["client"]]:
+        for name in [entrypoint, config["plugin"].replace(".", "/")] + [config["package"].replace(".", "/") + "/" + mixin for mixin in config["client"]]:
             self.entries[name + ".class"] = empty_class(name)
         for path in ASSETS.rglob("*"):
             if path.is_file():

@@ -17,6 +17,9 @@ TRANSLATION_KEYS = {
     "key.toggle_barrier_visibility",
     "lvb.to_visible",
     "lvb.to_invisible",
+    "lvb.mode_native",
+    "lvb.unavailable",
+    "lvb.disabled",
 }
 
 
@@ -121,7 +124,10 @@ def verify_jar(path, target, base, core_classes, assets):
                            "WorldRendererMixin", "ChunkRenderListAccess", "TranslucentMeshMixin", "BufferBuilderMixin", "VertexStateMixin",
                            "BlockStateMapperMixin" if target == "legacy-fabric" else "BlockModelsMixin"}
         require(set(mixins["client"]) == expected_mixins, "Unexpected client Mixins")
-        require(mixins["injectors"]["defaultRequire"] == 1, "Mixin injection failures must be fatal")
+        require(mixins.get("plugin") == adapter_package.replace("/", ".") + "RenderingPlugin",
+                "Rendering profile plugin is missing")
+        require(adapter_package + "RenderingPlugin.class" in classes, "Rendering profile plugin class is missing")
+        require(mixins["injectors"]["defaultRequire"] == 1, "Structural Mixins must remain required")
         for mixin in expected_mixins:
             require(adapter_package + "mixin/" + mixin + ".class" in classes, f"Missing Mixin {mixin}")
         refmap = json.loads(jar.read(mixins["refmap"]))

@@ -1,5 +1,7 @@
 package io.github.metaconscious.lvb.legacyfabric.mixin;
 
+import io.github.metaconscious.lvb.legacyfabric.RenderingPlugin;
+import io.github.metaconscious.lvb.core.RenderingPolicy;
 import io.github.metaconscious.lvb.legacyfabric.BarrierChunk;
 import io.github.metaconscious.lvb.legacyfabric.BarrierPositions;
 import net.minecraft.block.BlockState;
@@ -19,18 +21,27 @@ public class ChunkMixin implements BarrierChunk {
 
     @Override
     public Iterable<BlockPos> lvb$barriers() {
-        return lvb$positions.positions();
+        return RenderingPlugin.enhanced() ? lvb$positions.positions() : java.util.Collections.emptyList();
     }
 
     @Inject(method = "getBlockState", at = @At("RETURN"))
     private void lvb$blockChanged(BlockPos pos, BlockState state, CallbackInfoReturnable<BlockState> result) {
-        if (result.getReturnValue() != null) {
-            lvb$positions.update((Chunk) (Object) this, pos, state);
+        if (RenderingPlugin.enhanced() && result.getReturnValue() != null) {
+            try {
+                lvb$positions.update((Chunk) (Object) this, pos, state);
+            } catch (RuntimeException failure) {
+                RenderingPlugin.report(RenderingPolicy.Failure.ENHANCED, failure);
+            }
         }
     }
 
     @Inject(method = {"method_3895", "setLevelChunkSections"}, at = @At("TAIL"))
     private void lvb$chunkDataChanged(CallbackInfo ci) {
-        lvb$positions.replace((Chunk) (Object) this);
+        if (!RenderingPlugin.enhanced()) return;
+        try {
+            lvb$positions.replace((Chunk) (Object) this);
+        } catch (RuntimeException failure) {
+            RenderingPlugin.report(RenderingPolicy.Failure.ENHANCED, failure);
+        }
     }
 }

@@ -1,5 +1,6 @@
 package io.github.metaconscious.lvb.ornithe.mixin;
 
+import io.github.metaconscious.lvb.ornithe.RenderingPlugin;
 import io.github.metaconscious.lvb.ornithe.TranslucentBatch;
 import io.github.metaconscious.lvb.ornithe.TranslucentMesh;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -18,11 +19,12 @@ public class TranslucentMeshMixin implements TranslucentMesh {
 
     @Inject(method = "setTransparencyState", at = @At("RETURN"))
     private void lvb$publish(BufferBuilder.State state, CallbackInfo ci) {
-        lvb$published = state;
+        if (RenderingPlugin.enhancedMode()) lvb$published = state;
     }
 
     @Override
     public TranslucentBatch lvb$translucentBatch() {
+        if (!RenderingPlugin.enhancedMode()) return null;
         BufferBuilder.State state = lvb$published;
         if (state != lvb$cached) {
             lvb$batch = state == null ? null : new TranslucentBatch(state);

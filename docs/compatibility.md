@@ -20,7 +20,7 @@ artifacts have the same mod ID and are alternative installations.
 
 ## Rendering compatibility
 
-Visible barriers share a far-to-near draw order with the current translucent chunk
+In enhanced mode, visible barriers share a far-to-near draw order with the current translucent chunk
 vertices, including water and glass. Existing terrain geometry is reused and submitted
 once. Toggling does not rebuild chunks or tessellate other block models. Opaque blocks
 occlude barriers. Sorting uses Minecraft's quad-centre rule; intersecting custom
@@ -37,10 +37,56 @@ Shared ordering also requires the native compiled-chunk submission path in
 does not expose replacement terrain geometry for shared ordering. The exact hooks and
 ownership contracts are in [architecture.md](architecture.md).
 
+### Rendering modes
+
+Create `config/lvb.properties` in the Minecraft instance to select a mode. Changes take
+effect after restarting the client. The defaults are:
+
+```properties
+renderMode=auto
+nativeRefresh=dirty
+```
+
+| `renderMode` | Behavior |
+| --- | --- |
+| `auto` | Start with enhanced rendering; switch to native rendering when an essential optional hook is absent or an enhanced operation fails with successful state cleanup. |
+| `enhanced` | Explicitly request enhanced rendering, with the same recovery policy as `auto`. |
+| `native` | Use native translucent terrain meshes. Advanced LVB frame, chunk-index, vertex-origin and compiled-mesh Mixins are omitted at startup. |
+| `off` | Disable LVB visualization hooks; B reports that visualization is disabled. |
+
+Enhanced mode preserves shared barrier/water/glass ordering and performs no
+toggle-triggered terrain rebuilds. Native mode adds visible barriers to normal terrain
+meshes. Its transparency and shader behavior follow the installed terrain renderer.
+
+`nativeRefresh=dirty` marks the finite current view dirty, retains existing meshes, and
+lets Minecraft replace them. Visibility converges section by section; terrain models
+are rebuilt. Multiple key presses are coalesced into at most one refresh per tick.
+`nativeRefresh=reload` uses the original full renderer reload, which can cause terrain
+flicker. Use it when a replacement renderer does not honor ordinary region updates.
+Neither refresh policy loads world chunks or changes world data.
+
+A recovered enhanced failure switches to native mode for the remainder of the process,
+preserving visibility intent. LVB finishes graphics-state cleanup before handing over,
+reports the change once, and does not retry the failed renderer each frame. A missing
+baked barrier model or a model failure caught by the enhanced pass makes visualization
+unavailable, retains vanilla barrier particles, and reports unavailability instead of
+successful visibility.
+
+If a mod changes an enhanced transformation target in a way that prevents startup,
+select `native` before launching again. Mixin transformation failures cannot be undone
+by a runtime mode switch. A renderer that silently bypasses an otherwise present hook
+also requires explicit native selection. Missing loader dependencies and another mod's
+startup failure remain separate installation problems. The known conflicts below apply
+independently of LVB's rendering mode.
+
+JVM properties `-Dlvb.renderMode=native` and `-Dlvb.nativeRefresh=reload` override the
+corresponding file settings. An unreadable or invalid configuration selects native mode
+with dirty refresh and records the configuration error in the game log.
+
 ### Tested mod combinations
 
-The following builds were exercised with visible and hidden barriers, both terrain
-backends, resource reloads and world changes. Mod versions and enabled features are
+The following builds were exercised with the enhanced renderer, visible and hidden
+barriers, VBO and display-list terrain, resource reloads and world changes. Mod versions and enabled features are
 part of each combination.
 
 | Environment | Mods | Settings |
@@ -56,6 +102,19 @@ part of each combination.
 | Ornithe | [Kabo Village Marker 1.3.0](https://modrinth.com/mod/kabo-village-marker/version/wsVKa3iS) | Village spheres and golem areas; with OptiFine/OptiFabric during active mining. |
 | Ornithe | [AxolotlClient 3.1.8](https://modrinth.com/mod/axolotlclient/version/ySfusRPJ), [Waypoints 0.0.3](https://modrinth.com/mod/axolotlclient-waypoints/version/wYncBniX) and [legacy-lwjgl3 1.2.10](https://modrinth.com/mod/moehreag-legacy-lwjgl3/version/QeDzTTIm), Java 21 | Custom outlines and a world waypoint label; also with Kabo Village Marker. |
 | Ornithe | [OfftiFine 2.1.1](https://modrinth.com/mod/offtifine/version/6yzzDHuh), OptiFine/OptiFabric and legacy-lwjgl3 1.2.10, Java 21 | Default networking restrictions. |
+
+Native mode with dirty refresh was also exercised in the following combinations,
+including barrier pixels, compiled-mesh updates, VBO and display-list terrain, resource
+reloads and world changes:
+
+| Environment | Mods | Enabled features |
+| --- | --- | --- |
+| Both adapters | OptiFine HD U M5 and the matching OptiFabric build above | BSL 10.1.8 with Render Regions; also shaders off with Render Regions and 16× anisotropic filtering. |
+| Legacy Fabric | OptiFine/OptiFabric, LegacyEnhance 1.0.0, Phosphor-Legacy 0.1.5+1.8.9, Legacy Hitbox 1.0.0, Legacy Block Highlight 1.0.0 and Legacy Chunk Borders 1.0.0 | Hitboxes, block highlights and chunk grids. |
+| Ornithe | AxolotlClient 3.1.8, Waypoints 0.0.3, Kabo Village Marker 1.3.0 and legacy-lwjgl3 1.2.10, Java 21 | Custom outlines, waypoint labels and village markers. |
+
+The baseline client checks also cover explicit full reload, off mode, recovery from a
+competing terrain redirect, and a contained runtime failure in both adapters.
 
 Kabo requires the Minecraft 1.8.9 variants of OSL networking 0.8.0 and config 0.5.2.
 The AxolotlClient/Waypoints combination requires OSL networking and legacy-lwjgl3
@@ -84,13 +143,15 @@ checks with supplied mod JARs and configurations.
 | Default control | `B`, rebindable in Minecraft Controls |
 | Binding key | `key.toggle_barrier_visibility` |
 | Category key | `key.category.legacy_visible_barriers` |
-| Feedback keys | `lvb.to_visible`, `lvb.to_invisible` |
+| Feedback keys | `lvb.to_visible`, `lvb.to_invisible`; mode/status keys `lvb.mode_native`, `lvb.unavailable`, `lvb.disabled` |
 | Resource namespace | `assets/lvb`, with barrier assets under `assets/minecraft` |
 | Translations | German, English, Spanish, French, Japanese, Korean, Russian, Simplified Chinese, Traditional Chinese |
 | Initial state | Hidden on client startup |
 | State lifetime | Retained across worlds in the same process; not saved to disk |
-| Visible state | Translucent barrier block model, adjacent barrier faces culled, barrier particles suppressed |
-| Toggle rendering | Add/remove barrier geometry and share translucent draw ordering; no terrain reload, chunk rebuild, duplicate terrain submission, or additional non-barrier model tessellation |
+| Visible state | Translucent barrier model with adjacent faces culled; barrier particles suppressed while visualization is available when the optional particle hook is present |
+| Enhanced rendering | Shared translucent ordering; no toggle-triggered terrain reload, chunk rebuild, duplicate terrain submission, or additional non-barrier model tessellation |
+| Native rendering | Normal terrain meshes; coalesced dirty-region updates by default, with optional full reload |
+| Recovery | Preserve visibility intent; latch native mode after a contained enhanced failure, or report unavailability after a detected shared model failure |
 | Input outside a world | Consumed without changing state or sending feedback |
 | Metadata | Client environment, explicit game/Java/API requirements, CC0-1.0 license |
 

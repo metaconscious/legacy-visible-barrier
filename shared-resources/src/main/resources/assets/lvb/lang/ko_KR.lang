@@ -2,3 +2,6 @@ key.category.legacy_visible_barriers=레거시 가시 장벽
 key.toggle_barrier_visibility=장벽 가시성 전환
 lvb.to_visible=이제 장벽이 보입니다
 lvb.to_invisible=장벽이 더 이상 보이지 않습니다
+lvb.mode_native=기본 방벽 렌더링을 사용합니다. 지형이 순차적으로 갱신됩니다
+lvb.unavailable=방벽 시각화를 사용할 수 없습니다
+lvb.disabled=방벽 시각화가 비활성화되었습니다

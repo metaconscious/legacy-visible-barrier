@@ -6,10 +6,13 @@ intermediary namespaces; each distribution contains the same core classes and as
 
 ## Architecture
 
-The domain is visibility state. `VisibilityController` implements the toggle use case
+The domain is visibility intent and effective rendering availability. `VisibilityController` implements the toggle use case
 and exposes a read-only `VisibilityView`. `ClientEffects` is the boundary for world
 availability and translated feedback. The adapters implement
-that boundary with their respective Minecraft and platform APIs.
+that boundary with their respective Minecraft and platform APIs. `RenderingPolicy`
+publishes one immutable snapshot containing the mode and requested visibility. Client decisions remain private until the tick finishes, so workers never observe
+intermediate cancelling toggles. The policy owns monotonic failure transitions and
+coalesces native geometry refresh decisions.
 
 ```mermaid
 flowchart LR
@@ -25,7 +28,7 @@ flowchart LR
 
 | Project | Contents | Production dependencies |
 | --- | --- | --- |
-| `core` | Visibility controller, interfaces and translucent ordering | Java standard library |
+| `core` | Visibility, rendering policy, interfaces and translucent ordering | Java standard library |
 | `shared-resources` | Nine translations, icon, barrier models and texture | None |
 | `legacy-fabric` | Client entrypoint, chunk indexes, rendering adapters, Mixins, metadata | Core, resources, Legacy Fabric API, Fabric Loader, Minecraft |
 | `ornithe` | Client entrypoint, chunk indexes, rendering adapters, Mixins, metadata | Core, resources, OSL modules, Fabric Loader, Minecraft |
@@ -54,14 +57,17 @@ Mixins delegate chunk data changes to `BarrierPositions` and the translucent fra
 to `BarrierRenderer`. The block Mixin supplies adjacent-face culling and the translucent
 layer declaration. The particle Mixin suppresses barrier particles while visible. The
 model Mixin enables the barrier block model. Input handling and visibility transitions
-remain outside Mixins.
+remain outside Mixins. `RenderingPlugin` selects an immutable startup hook profile
+without loading Minecraft classes. `RenderingCoordinator` applies runtime decisions
+and native invalidation on the client thread.
 
 ### Rendering in Minecraft 1.8.9
 
 Minecraft compiles terrain into chunk meshes. `WorldRenderer.reload()` discards the
 render chunk storage; marking sections dirty rebuilds their terrain geometry. Barrier
-blocks retain vanilla render type `-1` in both visibility states, keeping their geometry
-out of those meshes. Toggling changes a flag read by the separate barrier pass.
+blocks retain vanilla render type `-1` in enhanced mode, keeping their geometry
+out of those meshes. Toggling changes a flag read by the enhanced barrier pass. In native
+mode, visible barriers use model render type `3` and the translucent terrain layer.
 
 | Hook | Legacy Yarn build 568 | Feather build 28 |
 | --- | --- | --- |
@@ -105,9 +111,11 @@ per-frame CPU work while the shared path is active.
 
 The frame hook selects the translucent invocation by its layer field, without capturing
 locals. The caller brackets the layer call, and a redirect owns only its native terrain
-container submission. Both caller hooks require exactly one matching site. If a mod
-cancels the layer call, the caller still submits barriers once afterwards. Sharing
-order with a replacement renderer requires that renderer to retain the native compiled
+container submission. The caller and terrain submission injectors permit zero matches. `postApply` checks for actual handler calls;
+an absent call closes enhanced rendering before the first frame and requests native
+mode. Structural Mixins retain required validation. If a mod cancels the layer call,
+the caller can still submit barriers once afterwards. Sharing order with a replacement
+renderer requires that renderer to retain the native compiled
 chunk submission path. Each anaglyph eye has its own pass. Shadow passes are excluded.
 
 The pass inherits the atlas, blending, fog, depth mask, shader program, and camera
@@ -125,9 +133,10 @@ and quad-to-triangle conversion. Its multi-texture path is limited to the select
 and uses the translucent layer's sprite order. Atlas restoration also restores the raw
 GL binding because OptiFine's sprite uploader bypasses Minecraft's binding cache.
 
-The renderer requires the client thread and rejects reentrant submission. Model or
-upload failures propagate to the caller. The renderer discards its failed CPU batch,
-so the next invocation starts with a fresh builder. Upload-state restoration runs in
+The renderer requires the client thread and rejects reentrant submission. It discards
+failed CPU batches. A runtime exception is recoverable only if LVB's graphics-state
+cleanup completes. Model failures are classified as shared; other contained enhanced
+failures can hand over to native terrain. Upload-state restoration runs in
 `finally`, including when lightmap setup fails. Models and GPU resources are not cached
 across resource reloads or world replacement.
 
@@ -135,13 +144,51 @@ Ordering follows Minecraft's quad-centre distance rule, including its transparen
 limitations for intersecting custom geometry.
 Renderer-specific scope and tested combinations are in [compatibility.md](compatibility.md).
 
+### Native rendering and recovery
+
+The native startup profile installs only model registration, the conditional barrier
+render-type/layer hook, and optional particle suppression. It omits all enhanced
+frame, chunk-index, container-access, compiled-mesh and vertex-origin Mixins. Off mode
+omits every LVB rendering Mixin. Native rendering never constructs `BarrierRenderer`
+or reads its barrier index.
+
+The enhanced profile includes the conditional native render-type hook in advance.
+A bounded atomic mailbox accepts failure evidence from callbacks, including terrain
+workers. The first failure is retained; a shared model failure takes precedence over
+an enhanced failure. New enhanced passes stop immediately. An in-flight upload keeps
+its range and snapshot support until cleanup finishes. The next client tick publishes
+the new mode, then acknowledges the failure. Workers cannot switch modes or call world
+invalidation APIs. Installed advanced callbacks become inert before their casts and
+side effects once native mode takes effect.
+
+A partially submitted translucent pass is not replayed in the same frame, avoiding
+double blending. An enhanced failure before submission can retain the original terrain
+draw. Failed graphics-state restoration and JVM errors propagate; they do not trigger
+an in-process handover. There is no automatic upgrade from native to enhanced, because
+native meshes may already contain barriers.
+
+The coordinator validates the shared baked barrier model on client ticks in a world.
+A missing model or a contained model-rendering failure makes visualization unavailable.
+Requested visibility remains separate from effective visibility and particle suppression.
+
+Native refresh uses `WorldRenderer.onRenderRegionUpdate(...)` in Legacy Yarn or
+`WorldRenderer.onRegionChanged(...)` in Feather. A bounded region spanning the camera's
+render-distance storage and world height marks all relevant sections dirty without
+loading world chunks. Existing meshes remain until replacement; Minecraft owns task
+cancellation and uploads. `RenderingPolicy.takeNativeRefresh()` compares the final
+native visibility after all queued input with the previous applied value, allowing at
+most one refresh per tick and none for cancelling toggles. An explicit `reload` refresh
+setting calls the full renderer reload instead. New worlds and chunks compile current
+visibility through their normal lifecycle.
+
 ## Contracts
 
 The controller is constructed on the client thread, which exclusively owns mutation
 and client effects. `toggle()` rejects calls from another thread before touching the
 client boundary. A volatile visibility field permits reads from other threads; index
 access and Minecraft rendering remain confined to the client thread.
-State changes precede feedback. The controller has no renderer invalidation operation.
+Visibility intent changes precede feedback. The coordinator publishes the final effective
+state after processing the tick's input. The controller has no renderer invalidation operation.
 
 Each adapter registers its callbacks once. Its safely published read-only view returns
 hidden before initialization. The tick callback consumes every queued key press;
@@ -149,21 +196,24 @@ presses without both a world and a player are discarded. There is no pending act
 replay on the next connection.
 
 Visibility survives disconnects, world changes, and resource reloads within a client
-process. A new client process starts hidden. There is no persistent configuration or
-server-side state.
+process. A new client process starts hidden. Rendering preferences are read from the
+instance configuration at startup; visibility is not saved and has no server-side state.
 
 Chunk indexes and barrier drawing belong to the client thread. Vanilla packet handling
 applies chunk and block updates on that thread, so rendering sees complete updates.
 The index contains immutable position copies and lives with its chunk. Rendering obtains
 baked models on each pass, allowing resource reloads to replace models without retaining
-stale references. Visibility changes perform no world mutation, chunk rebuild, terrain
-reload, or non-barrier model submission.
+stale references. Visibility changes never mutate world data. Enhanced toggles perform
+no chunk rebuild, terrain reload, or non-barrier model submission; native toggles use
+the configured terrain refresh policy.
 
-Core tests cover state transitions, feedback, thread ownership and draw ordering. Client smoke tests
+Core tests cover visibility, mode transitions, refresh coalescing, thread ownership and draw ordering. Client smoke tests
 compare water/glass overlap with a shared reference batch and verify barrier-only pixel
 changes, compiled terrain submission, frame hooks, lifecycle updates and
 restoration of changed graphics state. Optional mod fixtures exercise enabled rendering
-features. Artifact checks enforce module isolation, metadata, assets, Java 8 bytecode
+features. Separate client launches exercise native hook isolation, off mode and a
+competing redirect that removes the enhanced terrain hook. A contained failure fixture
+checks graphics cleanup, one-way handover and shared-model unavailability. Artifact checks enforce module isolation, metadata, assets, Java 8 bytecode
 and exclusion of test classes.
 
 Public guarantees and versioning policy are defined in [compatibility.md](compatibility.md).

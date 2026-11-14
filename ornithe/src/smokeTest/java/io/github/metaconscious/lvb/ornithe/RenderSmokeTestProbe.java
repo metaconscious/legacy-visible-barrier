@@ -19,6 +19,8 @@ public final class RenderSmokeTestProbe {
     public static int otherBlocks;
     public static int vertices;
     public static int invalidations;
+    public static int nativeRefreshes;
+    public static int nativeSections;
     public static int firstVertex;
 
     private RenderSmokeTestProbe() {
@@ -29,8 +31,12 @@ public final class RenderSmokeTestProbe {
     }
 
     public static void verifyShaderStage() {
+        verifyShaderStage(cameraPasses > 0);
+    }
+
+    public static void verifyShaderStage(boolean eligible) {
         String expected = System.getProperty("lvb.smoke.shaderPack");
-        if (expected == null || cameraPasses == 0) {
+        if (expected == null || !eligible) {
             return;
         }
         try {

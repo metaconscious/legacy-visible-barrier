@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(BarrierParticle.class)
 public class BarrierParticleMixin {
 
-    @Inject(method = "draw", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "draw", at = @At("HEAD"), cancellable = true, require = 0, expect = 0)
     private void lvb$draw(BufferBuilder builder, Entity entity, float tickDelta, float g, float h, float i, float j, float k, CallbackInfo ci) {
         if (LegacyFabricClient.barriersVisible()) {
             ci.cancel();
