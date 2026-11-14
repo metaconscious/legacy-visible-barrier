@@ -6,13 +6,16 @@ surface is defined in [docs/compatibility.md](docs/compatibility.md).
 ## [1.3.0] - Unreleased
 
 - Eliminate terrain reloads and screen flicker when toggling barrier visibility.
-- Draw barriers in a separate, depth-tested translucent pass in both adapters.
+- Build barrier geometry separately and share translucent draw ordering with existing
+  terrain vertices in both adapters, preserving water and glass blending.
 - Track barriers through block changes, chunk data updates, unloads, and world changes.
 - Preserve lightmap, color, vertex-array and buffer state around barrier drawing,
   including foreign VAOs and element buffers.
 - Enforce client-thread index access and non-reentrant rendering; recover the next
   batch after model or upload failures while restoring graphics state.
 - Keep the barrier frame hook reachable when a mod replaces or cancels terrain drawing.
+- Retain compiled vertex origins, shader attributes and sprite ordering with OptiFine;
+  restore atlas bindings after multi-texture uploads.
 - Document tested rendering mods, supported loader generations, and translucent ordering.
 - Add production-namespace compatibility tests for active hitboxes, block highlights,
   chunk grids, orthographic cameras, village markers, custom outlines and waypoint labels.

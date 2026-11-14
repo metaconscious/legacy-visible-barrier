@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.GlStateManager;
 import net.fabricmc.api.ClientModInitializer;
 import net.legacyfabric.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.Block;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
@@ -36,6 +37,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Collections;
 
 /** Exercises the installed client hooks, model tessellation and OpenGL output in a test world. */
 public final class ClientSmokeTest implements ClientModInitializer {
@@ -230,7 +232,12 @@ public final class ClientSmokeTest implements ClientModInitializer {
         return frame(client, expectedModels, expectedVertices, null);
     }
 
-    private static byte[] frame(MinecraftClient client, int expectedModels, int expectedVertices, BlockPos glass) {
+    private static byte[] frame(MinecraftClient client, int expectedModels, int expectedVertices, BlockPos[] neighbors) {
+        return frame(client, expectedModels, expectedVertices, neighbors, false);
+    }
+
+    private static byte[] frame(MinecraftClient client, int expectedModels, int expectedVertices, BlockPos[] neighbors,
+                                boolean referenceOrder) {
         GL11.glViewport(0, 0, WIDTH, HEIGHT);
         GL11.glMatrixMode(GL11.GL_PROJECTION);
         GL11.glLoadIdentity();
@@ -253,7 +260,7 @@ public final class ClientSmokeTest implements ClientModInitializer {
         GlStateManager.color(1, 1, 1, 1);
         client.getTextureManager().bindTexture(SpriteAtlasTexture.BLOCK_ATLAS_TEX);
         BlockRenderManager models = client.getBlockRenderManager();
-        Tessellator terrain = new Tessellator(256);
+        Tessellator terrain = new Tessellator(4096);
         BufferBuilder buffer = terrain.getBuffer();
         buffer.begin(GL11.GL_QUADS, VertexFormats.BLOCK);
         buffer.offset(-client.player.x, -client.player.y, -client.player.z);
@@ -263,23 +270,67 @@ public final class ClientSmokeTest implements ClientModInitializer {
         GlStateManager.blendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
         GlStateManager.depthMask(false);
         GlStateManager.shadeModel(GL11.GL_SMOOTH);
-        if (glass != null) {
+        TranslucentBatch translucent = null;
+        int atlas = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        if (neighbors != null) {
+            prepareTranslucent(buffer);
             buffer.begin(GL11.GL_QUADS, VertexFormats.BLOCK);
-            buffer.offset(-client.player.x, -client.player.y, -client.player.z);
-            models.renderBlock(Blocks.STAINED_GLASS.getDefaultState(), glass, client.world, buffer);
-            terrain.draw();
+            // Compiled terrain can use a region origin rather than the camera or chunk origin.
+            if (!referenceOrder && LegacyFabricClient.barriersVisible()) {
+                buffer.offset(-256, 0, -256);
+            } else {
+                buffer.offset(-client.player.x, -client.player.y, -client.player.z);
+            }
+            for (BlockPos pos : neighbors) {
+                models.renderBlock(client.world.getBlockState(pos), pos, client.world, buffer);
+            }
+            try {
+                if (Boolean.TRUE.equals(BufferBuilder.class.getMethod("isMultiTexture").invoke(buffer))) {
+                    SmokeTestReport.record("multi-texture-terrain");
+                }
+            } catch (NoSuchMethodException vanilla) {
+                // Vanilla uses the block atlas directly.
+            } catch (ReflectiveOperationException failure) {
+                throw new AssertionError("Cannot inspect terrain texture mode", failure);
+            }
+            if (referenceOrder) {
+                for (BlockPos pos : new BlockPos[]{FIRST, SECOND, OCCLUDED}) {
+                    models.getModelRenderer().render(client.world,
+                            models.getModel(Blocks.BARRIER.getDefaultState(), client.world, pos),
+                            Blocks.BARRIER.getDefaultState(), pos, buffer);
+                }
+                buffer.offset(0, 0, 0);
+                buffer.sortQuads(0, 0, 0);
+            }
+            if (!referenceOrder && LegacyFabricClient.barriersVisible()) {
+                buffer.end();
+                BufferBuilder.DrawArrayParameters snapshot = buffer.method_9727();
+                buffer.offset(17, 19, 23);
+                net.minecraft.client.world.ChunkAssemblyHelper compiled = new net.minecraft.client.world.ChunkAssemblyHelper();
+                compiled.setDrawArrayParameters(snapshot);
+                translucent = ((TranslucentMesh) compiled).lvb$translucentBatch();
+            } else {
+                client.gameRenderer.enableLightmap();
+                terrain.draw();
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, atlas);
+                client.gameRenderer.disableLightmap();
+            }
         }
         RenderSmokeTestProbe.resetModels();
         RenderSmokeTestProbe.watchModels = true;
+        final TranslucentBatch capturedTerrain = translucent;
         try {
-            BARRIERS.render(client, client.player, 1);
+            if (!referenceOrder) {
+                BARRIERS.renderWithTerrain(client, client.player, 1,
+                        () -> capturedTerrain == null ? Collections.emptyList() : Collections.singletonList(capturedTerrain));
+            }
         } finally {
             RenderSmokeTestProbe.watchModels = false;
         }
         require(RenderSmokeTestProbe.otherBlocks == 0, "Barrier pass tessellated another block type");
-        require(RenderSmokeTestProbe.barriers == expectedModels,
+        require(referenceOrder || RenderSmokeTestProbe.barriers == expectedModels,
                 "Expected " + expectedModels + " barrier models, got " + RenderSmokeTestProbe.barriers);
-        require(RenderSmokeTestProbe.vertices == expectedVertices,
+        require(referenceOrder || RenderSmokeTestProbe.vertices == expectedVertices,
                 "Expected " + expectedVertices + " vertices, got " + RenderSmokeTestProbe.vertices);
         require(GL11.glGetError() == GL11.GL_NO_ERROR, "OpenGL error in barrier pass");
         ByteBuffer pixels = BufferUtils.createByteBuffer(WIDTH * HEIGHT * 4);
@@ -316,18 +367,67 @@ public final class ClientSmokeTest implements ClientModInitializer {
         }
     }
 
+    private static void prepareTranslucent(BufferBuilder buffer) {
+        try {
+            BufferBuilder.class.getMethod("setBlockLayer", RenderLayer.class).invoke(buffer, RenderLayer.TRANSLUCENT);
+        } catch (NoSuchMethodException vanilla) {
+            // Vanilla has no per-sprite terrain uploader.
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError("Cannot prepare translucent terrain fixture", failure);
+        }
+    }
+
+    private static void verifyCompiledTerrain(MinecraftClient client) {
+        boolean previousVbo = client.options.vbo;
+        try {
+            for (boolean vbo : new boolean[]{false, true}) {
+                client.options.vbo = vbo;
+                client.worldRenderer.reload();
+                RenderSmokeTestProbe.resetModels();
+                RenderSmokeTestProbe.watchModels = true;
+                long deadline = System.nanoTime() + 5_000_000_000L;
+                while (RenderSmokeTestProbe.terrainBatches == 0 && System.nanoTime() < deadline) {
+                    client.gameRenderer.renderWorld(1, System.nanoTime() + 100_000_000L);
+                }
+                require(RenderSmokeTestProbe.terrainBatches > 0, "Compiled terrain did not enter the shared order");
+                require(GL11.glGetError() == GL11.GL_NO_ERROR, "OpenGL error in shared terrain submission");
+            }
+            SmokeTestReport.record("shared-terrain-submission");
+        } finally {
+            RenderSmokeTestProbe.watchModels = false;
+            client.options.vbo = previousVbo;
+        }
+    }
+
     private void verifyTranslucentNeighbors(MinecraftClient client) {
-        for (int z : new int[]{-1, 1}) {
-            BlockPos glass = new BlockPos(0, 64, z);
-            client.world.setBlockState(glass, Blocks.STAINED_GLASS.getDefaultState(), 2);
-            toggle(client);
-            byte[] hidden = frame(client, 0, 0, glass);
-            toggle(client);
-            requireBarrierPixels(hidden, frame(client, 3, 64, glass));
-            toggle(client);
-            require(Arrays.equals(hidden, frame(client, 0, 0, glass)), "Toggle changed neighbouring glass");
-            toggle(client);
-            client.world.setBlockState(glass, Blocks.AIR.getDefaultState(), 2);
+        for (Block[] materials : new Block[][]{{Blocks.STAINED_GLASS}, {Blocks.WATER},
+                {Blocks.WATER, Blocks.STAINED_GLASS}}) {
+            int[][] scenes = materials.length == 1 ? new int[][]{{-1}, {1}, {-1, 1}} : new int[][]{{-1, 1}};
+            for (int[] depths : scenes) {
+                BlockPos[] neighbors = new BlockPos[depths.length];
+                for (int i = 0; i < depths.length; i++) {
+                    neighbors[i] = new BlockPos(0, 64, depths[i]);
+                    client.world.setBlockState(neighbors[i], materials[i % materials.length].getDefaultState(), 2);
+                }
+                if (materials.length == 2) {
+                    verifyCompiledTerrain(client);
+                }
+                toggle(client);
+                byte[] hidden = frame(client, 0, 0, neighbors);
+                toggle(client);
+                byte[] visible = frame(client, 3, 64, neighbors);
+                requireBarrierPixels(hidden, visible);
+                require(Arrays.equals(visible, frame(client, 3, 64, neighbors, true)),
+                        "Barrier blending differs from a shared translucent order: " + Arrays.toString(materials)
+                                + " " + Arrays.toString(depths));
+                toggle(client);
+                require(Arrays.equals(hidden, frame(client, 0, 0, neighbors)),
+                        "Toggle changed neighbouring translucent terrain");
+                toggle(client);
+                for (BlockPos pos : neighbors) {
+                    client.world.setBlockState(pos, Blocks.AIR.getDefaultState(), 2);
+                }
+            }
         }
         SmokeTestReport.record("translucent-neighbor-pixels");
     }

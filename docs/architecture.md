@@ -25,10 +25,10 @@ flowchart LR
 
 | Project | Contents | Production dependencies |
 | --- | --- | --- |
-| `core` | Visibility controller and interfaces | Java standard library |
+| `core` | Visibility controller, interfaces and translucent ordering | Java standard library |
 | `shared-resources` | Nine translations, icon, barrier models and texture | None |
-| `legacy-fabric` | Client entrypoint, barrier index and renderer, five thin Mixins, metadata | Core, resources, Legacy Fabric API, Fabric Loader, Minecraft |
-| `ornithe` | Client entrypoint, barrier index and renderer, five thin Mixins, metadata | Core, resources, OSL modules, Fabric Loader, Minecraft |
+| `legacy-fabric` | Client entrypoint, chunk indexes, rendering adapters, Mixins, metadata | Core, resources, Legacy Fabric API, Fabric Loader, Minecraft |
+| `ornithe` | Client entrypoint, chunk indexes, rendering adapters, Mixins, metadata | Core, resources, OSL modules, Fabric Loader, Minecraft |
 
 `shared-resources` exposes a resource archive through a consumable Gradle configuration.
 Adapters consume it through project dependencies. Core classes are embedded directly
@@ -65,7 +65,9 @@ out of those meshes. Toggling changes a flag read by the separate barrier pass.
 
 | Hook | Legacy Yarn build 568 | Feather build 28 |
 | --- | --- | --- |
-| Frame, after translucent terrain | `GameRenderer.renderWorld(int, float, long)` after `WorldRenderer.renderLayer(...)` | `GameRenderer.render(int, float, long)` after `WorldRenderer.render(...)` |
+| Main camera pass | `GameRenderer.renderWorld(int, float, long)` around the translucent `WorldRenderer.renderLayer(...)` call | `GameRenderer.render(int, float, long)` around the translucent `WorldRenderer.render(...)` call |
+| Terrain submission | `AbstractChunkRenderManager.render(RenderLayer)` in `WorldRenderer` | `RenderChunkList.render(BlockLayer)` in `WorldRenderer` |
+| Compiled translucent vertices | `ChunkAssemblyHelper.setDrawArrayParameters(...)` | `CompiledChunk.setTransparencyState(...)` |
 | Successful block change | `Chunk.getBlockState(BlockPos, BlockState)` | `WorldChunk.setBlockState(BlockPos, BlockState)` |
 | Chunk packet applied | `Chunk.method_3895(byte[], int, boolean)` | `WorldChunk.update(byte[], int, boolean)` |
 | Section replacement | `Chunk.setLevelChunkSections(ChunkSection[])` | `WorldChunk.setSections(WorldChunkSection[])` |
@@ -81,15 +83,32 @@ snapshot for worker rendering. The index retains neither its chunk nor its world
 
 The pass submits only barrier models to Minecraft's block model renderer. It uses a
 reusable vertex buffer, camera-relative coordinates, current world lighting, and the
-current baked models. Adjacent barrier faces are culled across chunk boundaries. Vanilla
-translucent terrain is submitted first, followed by the barrier batch with its quads
-sorted back to front. Opaque terrain occludes barriers through depth testing.
+current baked models. Adjacent barrier faces are culled across chunk boundaries.
+`TranslucentOrder` merges barrier and terrain quad centres into a stable far-to-near
+order and coalesces contiguous source ranges. It operates on numbers and range callbacks;
+Minecraft vertex formats and draw operations remain in the adapters. Opaque terrain
+occludes barriers through depth testing.
+
+Each compiled chunk publishes its translucent vertex snapshot through a volatile
+reference. The client thread copies a new snapshot into a cached `TranslucentBatch`.
+The snapshot retains the builder's world origin before the worker reuses that builder,
+including OptiFine's region origins. Each range uses its original vertex format and
+the appropriate chunk transform. Cached batches live with their compiled chunks and
+are replaced when the snapshot changes. They own no GPU buffers.
+
+When visible barrier geometry exists, the terrain submission hook replaces the native
+translucent container draw with the shared order. Every selected terrain quad is
+submitted once, using its existing vertices; no non-barrier model is tessellated by LVB.
+Hidden barriers and views without barrier geometry retain the native submission path.
+Opaque terrain submission is unchanged. Sorting visible translucent vertices adds
+per-frame CPU work while the shared path is active.
 
 The frame hook selects the translucent invocation by its layer field, without capturing
-locals or replacing vanilla methods. It runs in the caller, so cancelling or replacing
-`WorldRenderer`'s layer method does not bypass it. The caller must retain that invocation.
-The injector requires exactly one matching site. Each camera pass, including each
-anaglyph eye, invokes the barrier renderer once even when terrain is empty or cancelled.
+locals. The caller brackets the layer call, and a redirect owns only its native terrain
+container submission. Both caller hooks require exactly one matching site. If a mod
+cancels the layer call, the caller still submits barriers once afterwards. Sharing
+order with a replacement renderer requires that renderer to retain the native compiled
+chunk submission path. Each anaglyph eye has its own pass. Shadow passes are excluded.
 
 The pass inherits the atlas, blending, fog, depth mask, shader program, and camera
 matrices. `BarrierRenderState` selects VAO 0 before saving client vertex arrays and
@@ -97,11 +116,14 @@ buffer bindings, unbinds any VBO for Minecraft's CPU-buffer uploader, and restor
 state before reselecting the incoming VAO. Core or ARB entry points are selected from
 the current context's capabilities; contexts without VAOs retain the original path.
 Foreign VAO attributes and element buffers remain untouched. The guard also
-preserves the lightmap texture, enable state and texture matrix, active texture units,
+preserves the atlas and lightmap textures, enable state and texture matrix, active texture units,
 matrix mode, and current attributes. Restoration uses `GlStateManager` for its cached
 state, including explicit color-cache reconciliation. It neither clears the framebuffer
-nor requests terrain invalidation. VBO and display-list terrain remain independent of
-the barrier batch.
+nor requests terrain invalidation. The shared path uses Minecraft's CPU uploader with
+either VBO or display-list terrain enabled. OptiFine's uploader retains shader attributes
+and quad-to-triangle conversion. Its multi-texture path is limited to the selected range
+and uses the translucent layer's sprite order. Atlas restoration also restores the raw
+GL binding because OptiFine's sprite uploader bypasses Minecraft's binding cache.
 
 The renderer requires the client thread and rejects reentrant submission. Model or
 upload failures propagate to the caller. The renderer discards its failed CPU batch,
@@ -109,8 +131,8 @@ so the next invocation starts with a fresh builder. Upload-state restoration run
 `finally`, including when lightmap setup fails. Models and GPU resources are not cached
 across resource reloads or world replacement.
 
-The barrier batch sorts its own quads; it does not merge with water or glass geometry.
-Intersections with other translucent blocks can therefore have ordering artifacts.
+Ordering follows Minecraft's quad-centre distance rule, including its transparency
+limitations for intersecting custom geometry.
 Renderer-specific scope and tested combinations are in [compatibility.md](compatibility.md).
 
 ## Contracts
@@ -137,8 +159,9 @@ baked models on each pass, allowing resource reloads to replace models without r
 stale references. Visibility changes perform no world mutation, chunk rebuild, terrain
 reload, or non-barrier model submission.
 
-Core tests cover state transitions, feedback and thread ownership. Client smoke tests
-verify barrier-only pixels, terrain isolation, frame hooks, lifecycle updates and
+Core tests cover state transitions, feedback, thread ownership and draw ordering. Client smoke tests
+compare water/glass overlap with a shared reference batch and verify barrier-only pixel
+changes, compiled terrain submission, frame hooks, lifecycle updates and
 restoration of changed graphics state. Optional mod fixtures exercise enabled rendering
 features. Artifact checks enforce module isolation, metadata, assets, Java 8 bytecode
 and exclusion of test classes.

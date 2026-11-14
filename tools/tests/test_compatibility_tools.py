@@ -59,12 +59,28 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(runner.digest(config / "overlay.json"), result["configuration_before"]["config/overlay.json"])
         self.assertEqual(self.client, result["client"])
         self.assertEqual(runner.digest(options), result["configuration_before"]["optionsof.txt"])
+        self.assertEqual("", (self.profile / "options.txt").read_text())
 
 
     def test_enabled_feature_requires_executed_assertion(self):
         code, result = self.launch(properties=["lvb.smoke.expectHitboxes=true"])
         self.assertEqual(1, code)
         self.assertIn("feature:expectHitboxes", result["failure"])
+
+    def test_shader_pack_requires_an_active_shader_program(self):
+        shader = self.root / "shader.zip"
+        with zipfile.ZipFile(shader, "w") as archive:
+            archive.writestr("shaders/gbuffers_water.vsh", "shader fixture")
+        code, result = self.launch(shader_pack=shader)
+        self.assertEqual(1, code)
+        self.assertIn("shader-pack-active", result["failure"])
+        self.profile = self.root / "active-shader"
+        self.client["assertions"].append("shader-pack-active")
+        code, result = self.launch(shader_pack=shader)
+        self.assertEqual(0, code)
+        self.assertEqual(runner.digest(shader), result["shader_pack"]["sha256"])
+        self.assertEqual(shader.read_bytes(), (self.profile / "shaderpacks/shader.zip").read_bytes())
+        self.assertIn("shaderPack=shader.zip", (self.profile / "optionsshaders.txt").read_text())
 
 
     def test_crashed_client_cannot_pass_with_a_report(self):

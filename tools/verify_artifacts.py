@@ -118,6 +118,7 @@ def verify_jar(path, target, base, core_classes, assets):
         require(mixins["required"] and mixins["compatibilityLevel"] == "JAVA_8", "Mixin requirements changed")
         require(not mixins.get("mixins") and not mixins.get("server"), "Mixins must be client-only")
         expected_mixins = {"BarrierBlockMixin", "BarrierParticleMixin", "ChunkMixin", "GameRendererMixin",
+                           "WorldRendererMixin", "ChunkRenderListAccess", "TranslucentMeshMixin", "BufferBuilderMixin", "VertexStateMixin",
                            "BlockStateMapperMixin" if target == "legacy-fabric" else "BlockModelsMixin"}
         require(set(mixins["client"]) == expected_mixins, "Unexpected client Mixins")
         require(mixins["injectors"]["defaultRequire"] == 1, "Mixin injection failures must be fatal")

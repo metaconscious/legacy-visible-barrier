@@ -17,7 +17,7 @@ BASE_ASSERTIONS = {
     "startup-controls", "barrier-pixels-vbo-on-off", "zero-toggle-terrain-invalidations",
     "batch-failure-recovery", "index-thread-ownership", "foreign-gl-state-and-failure",
     "camera-pass-counts", "empty-camera-pass-counts", "block-chunk-lifecycle",
-    "resource-reload", "world-switch", "translucent-neighbor-pixels",
+    "resource-reload", "world-switch", "translucent-neighbor-pixels", "shared-terrain-submission",
 }
 OPTION_FILES = {"options.txt", "optionsof.txt", "optionsshaders.txt"}
 
@@ -49,6 +49,8 @@ def validate_client(result):
                                   for p in result["properties"] if p.endswith("=true")}
     if runtime.get("vao") in ("core", "arb"):
         required.add("foreign-vao")
+    if result.get("shader_pack"):
+        required.add("shader-pack-active")
     missing = required - set(client.get("assertions", []))
     return "Missing assertions: " + ", ".join(sorted(missing)) if missing else None
 
@@ -58,7 +60,7 @@ def is_mod(jar):
         return "fabric.mod.json" in archive.namelist()
 
 
-def launch(manifest, profile, mods, java=None, properties=(), config=None, options=()):
+def launch(manifest, profile, mods, java=None, properties=(), config=None, options=(), shader_pack=None):
     data = json.loads(manifest.read_text(encoding="utf-8"))
     validate_properties(data["platform"], properties)
     if any(p.name not in OPTION_FILES for p in options) or len({p.name for p in options}) != len(options):
@@ -72,6 +74,17 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
         shutil.copytree(config, profile / "config")
     for file in options:
         shutil.copyfile(file, profile / file.name)
+    if (profile / "optionsof.txt").exists() and not (profile / "options.txt").exists():
+        # OptiFine's option loader returns early when Minecraft's options file is absent.
+        (profile / "options.txt").touch()
+    if shader_pack:
+        shader_dir = profile / "shaderpacks"
+        shader_dir.mkdir()
+        shutil.copyfile(shader_pack, shader_dir / shader_pack.name)
+        settings = profile / "optionsshaders.txt"
+        lines = settings.read_text(encoding="utf-8").splitlines() if settings.exists() else []
+        lines = [line for line in lines if not line.startswith("shaderPack=")]
+        settings.write_text("\n".join(lines + ["shaderPack=" + shader_pack.name]) + "\n", encoding="utf-8")
     settings_before = configurations(profile)
 
     installed = []
@@ -111,6 +124,7 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
                f"-Dorg.lwjgl.librarypath={native_dir}", "-Dfabric.disableErrorGui=true",
                "-Dfabric.development=false", "-Dlog4j2.formatMsgNoLookups=true",
                f"-Dlvb.smoke.report={report}", *[f"-D{p}" for p in properties],
+               *([f"-Dlvb.smoke.shaderPack={shader_pack.name}"] if shader_pack else []),
                "-cp", os.pathsep.join(classpath), "net.fabricmc.loader.impl.launch.knot.KnotClient",
                "--version", "1.8.9", "--gameDir", str(profile), "--assetsDir", data["assets"],
                "--assetIndex", data["assetIndex"], "--accessToken", "0", "--username", "LVBTest",
@@ -120,6 +134,8 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
               "runtime_artifacts": [{"file": Path(p).name, "sha256": digest(Path(p))}
                                     for p in classpath + data["natives"]],
               "configuration_before": settings_before, "properties": list(properties)}
+    if shader_pack:
+        result["shader_pack"] = {"file": shader_pack.name, "sha256": digest(shader_pack)}
     with (profile / "console.log").open("w", encoding="utf-8") as log:
         try:
             process = subprocess.run(command, cwd=profile, stdout=log, stderr=subprocess.STDOUT, timeout=240)
@@ -151,6 +167,7 @@ def main():
     parser.add_argument("--config", type=Path, help="Directory of mod configurations to copy")
     parser.add_argument("--options", type=Path, action="append", default=[], help="Minecraft options file; repeat as needed")
     parser.add_argument("--java", help="Java executable; defaults to the build's Java 8 launcher")
+    parser.add_argument("--shader-pack", type=Path, help="Shader ZIP to install, select and verify with OptiFine")
     parser.add_argument("--property", action="append", default=[], help="Optional lvb.smoke feature assertion")
     args = parser.parse_args()
     try:
@@ -163,7 +180,7 @@ def main():
     manifest = root / args.platform / "build/mod-compatibility/launch.json"
     return launch(manifest, args.profile.resolve(), [p.resolve() for p in args.mod],
                   args.java, args.property, args.config.resolve() if args.config else None,
-                  [p.resolve() for p in args.options])
+                  [p.resolve() for p in args.options], args.shader_pack.resolve() if args.shader_pack else None)
 
 
 if __name__ == "__main__":

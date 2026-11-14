@@ -66,6 +66,15 @@ final class RenderStateSmokeTest {
         GL20.glEnableVertexAttribArray(8);
         int[] attribute = vertexAttribute(8);
         try {
+            BarrierRenderState state = new BarrierRenderState();
+            state.capture();
+            int atlas = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+            // Multi-texture uploads bypass GlStateManager's texture cache.
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+            state.bindAtlas();
+            require(GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D) == atlas,
+                    "Atlas binding was not restored after a sprite upload");
+            state.restore(client);
             BarrierRenderer renderer = new BarrierRenderer();
             RenderSmokeTestProbe.failLightmap = true;
             RenderSmokeTestProbe.expectFailure(() -> renderer.render(client, client.player, 1),

@@ -20,14 +20,22 @@ artifacts have the same mod ID and are alternative installations.
 
 ## Rendering compatibility
 
-The barrier pass draws after translucent terrain. It preserves the vertex-array,
-lightmap and colour state it changes. A renderer replacing `GameRenderer` must retain
-its translucent terrain call; [architecture.md](architecture.md) describes the hook.
+Visible barriers share a far-to-near draw order with the current translucent chunk
+vertices, including water and glass. Existing terrain geometry is reused and submitted
+once. Toggling does not rebuild chunks or tessellate other block models. Opaque blocks
+occlude barriers. Sorting uses Minecraft's quad-centre rule; intersecting custom
+geometry retains the limitations of that rule.
 
-Barrier quads are sorted within their own batch. Intersections with water, glass or
-other translucent geometry can blend in the wrong order. Opaque blocks occlude
-barriers. External shader packs are untested; barriers do not participate in OptiFine's
-terrain shadow pass.
+The pass preserves vertex-array, atlas, lightmap and colour state. It uses Minecraft's
+vertex uploader, retaining OptiFine's shader attributes and multi-texture handling.
+OptiFine draws barriers in the main translucent shader stage; barriers do not participate
+in its terrain shadow pass.
+
+A renderer replacing `GameRenderer` must retain its translucent terrain invocation.
+Shared ordering also requires the native compiled-chunk submission path in
+`WorldRenderer`. Cancelling that layer still permits the caller to draw barriers, but
+does not expose replacement terrain geometry for shared ordering. The exact hooks and
+ownership contracts are in [architecture.md](architecture.md).
 
 ### Tested mod combinations
 
@@ -38,6 +46,8 @@ part of each combination.
 | Environment | Mods | Settings |
 | --- | --- | --- |
 | Both adapters | OptiFine HD U M5 with OptiFabric [2.3.6+1.3.1-1.13.2 for Legacy Fabric](https://modrinth.com/mod/legacy-optifabric/version/VxbRKwpM) or [2.3.6+b1.7.3-1.14.4 for Ornithe](https://modrinth.com/mod/legacy-optifabric/version/keYvdDsA) | Shaders off with Fast Render off/on; internal shaders with Fast Render off. |
+| Both adapters | OptiFine HD U M5 with the matching OptiFabric build | Render Regions enabled; shaders off, Fast Render off, anisotropic filtering 16× (multi-texture terrain). |
+| Both adapters | OptiFine HD U M5, the matching OptiFabric build and [BSL 10.1.8](https://modrinth.com/shader/bsl-shaders/version/Y68yiql9) | External pack active, Render Regions enabled, Fast Render off, anisotropic filtering 1×. |
 | Legacy Fabric | LegacyEnhance 1.0.0, Phosphor-Legacy 0.1.5+1.8.9, FPS Plus Ver-D, Legacy Hitbox 1.0.0, Legacy Block Highlight 1.0.0 and Extended Ingame Hud 0.1.0 | Default configuration, installed together. |
 | Legacy Fabric | Legacy Hitbox 1.0.0, Legacy Block Highlight 1.0.0, LegacyEnhance 1.0.0 and Phosphor-Legacy 0.1.5+1.8.9 | Gradient hitboxes and volume highlights; also with OptiFine/OptiFabric or AxolotlClient 3.0.6. |
 | Legacy Fabric | [Legacy Chunk Borders 1.0.0](https://modrinth.com/mod/legacy-chunk-borders/version/hp3oZxHx) | Grid enabled, alone and with OptiFine/OptiFabric. |
@@ -80,7 +90,7 @@ checks with supplied mod JARs and configurations.
 | Initial state | Hidden on client startup |
 | State lifetime | Retained across worlds in the same process; not saved to disk |
 | Visible state | Translucent barrier block model, adjacent barrier faces culled, barrier particles suppressed |
-| Toggle rendering | Only the barrier pass changes; no terrain reload, chunk rebuild, or additional non-barrier model rendering |
+| Toggle rendering | Add/remove barrier geometry and share translucent draw ordering; no terrain reload, chunk rebuild, duplicate terrain submission, or additional non-barrier model tessellation |
 | Input outside a world | Consumed without changing state or sending feedback |
 | Metadata | Client environment, explicit game/Java/API requirements, CC0-1.0 license |
 

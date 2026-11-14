@@ -9,7 +9,12 @@
     "BarrierParticleMixin",
     "BlockStateMapperMixin",
     "ChunkMixin",
-    "GameRendererMixin"
+    "GameRendererMixin",
+    "WorldRendererMixin",
+    "ChunkRenderListAccess",
+    "TranslucentMeshMixin",
+    "BufferBuilderMixin",
+    "VertexStateMixin"
   ],
   "injectors": {
     "defaultRequire": 1

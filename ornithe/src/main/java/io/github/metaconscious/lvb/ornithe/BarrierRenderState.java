@@ -20,6 +20,7 @@ final class BarrierRenderState {
     private int activeTexture;
     private int matrixMode;
     private int lightmapTexture;
+    private int atlasTexture;
     private boolean lightmapEnabled;
     private boolean coreVertexArrays;
     private boolean vertexArrays;
@@ -51,6 +52,14 @@ final class BarrierRenderState {
         GL11.glMatrixMode(GL11.GL_TEXTURE);
         GL11.glPushMatrix();
         GlStateManager.activeTexture(GL13.GL_TEXTURE0);
+        atlasTexture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+    }
+
+    void bindAtlas() {
+        GlStateManager.activeTexture(GL13.GL_TEXTURE0);
+        GlStateManager.bindTexture(atlasTexture);
+        // OptiFine's multi-texture uploader binds sprites without updating Minecraft's cache.
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, atlasTexture);
     }
 
     void restore(Minecraft client) {
@@ -65,6 +74,7 @@ final class BarrierRenderState {
         GL11.glMatrixMode(GL11.GL_TEXTURE);
         GL11.glPopMatrix();
         GL11.glMatrixMode(matrixMode);
+        bindAtlas();
         GlStateManager.activeTexture(activeTexture);
         GL11.glPopClientAttrib();
         if (vertexArrays) {

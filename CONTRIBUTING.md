@@ -68,7 +68,8 @@ It uses fresh directories under each adapter's `build`,
 exits automatically, and writes `build/reports/smoke-test.txt` and `client.json` in each adapter. CI runs
 these checks before staging. Test mod classes and resources are excluded from distributions.
 
-Client tests compare barrier pixels, count geometry and terrain invalidations, exercise
+Client tests compare barrier pixels and water/glass blending against a shared reference
+batch, count geometry and terrain invalidations, exercise
 chunk/world/resource updates, and verify OpenGL state restoration and failure recovery.
 Both terrain backends and mono/anaglyph camera passes are covered. Optional mod fixtures
 check active overlays across toggles and reloads. See [compatibility.md](docs/compatibility.md)
@@ -97,6 +98,11 @@ or `optionsshaders.txt` to seed Minecraft/OptiFine settings. The runner uses the
 display requirements as `smokeTest`. Reports contain logs, artifact/configuration hashes,
 runtime versions and completed checks. Profiles under `build/` are ignored by Git.
 Re-run the Gradle preparation after changing source code or dependencies.
+
+With OptiFine/OptiFabric installed, `--shader-pack /path/to/pack.zip` copies and selects
+an external shader pack. The smoke test requires that pack and a shader program to be
+active in the main translucent pass. The report records the pack hash. Supply
+`optionsof.txt` with Fast Render disabled for this profile.
 
 Optional assertions exercise these pinned builds; a missing mod or inactive feature
 fails the corresponding check:

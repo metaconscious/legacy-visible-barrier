@@ -3,6 +3,7 @@ package io.github.metaconscious.lvb.legacyfabric;
 /** Counters supplied exclusively by the test mod's Minecraft hooks. */
 public final class RenderSmokeTestProbe {
     public static final Thread OWNER = Thread.currentThread();
+    public static int terrainBatches;
     public static int barrierPasses;
     public static int cameraPasses;
     public static int eyeMask;
@@ -25,7 +26,30 @@ public final class RenderSmokeTestProbe {
     private RenderSmokeTestProbe() {
     }
 
+    public static void regionTerrain() {
+        SmokeTestReport.record("vbo-region-terrain");
+    }
+
+    public static void verifyShaderStage() {
+        String expected = System.getProperty("lvb.smoke.shaderPack");
+        if (expected == null || cameraPasses == 0) {
+            return;
+        }
+        try {
+            Class<?> shaders = Class.forName("net.optifine.shaders.Shaders");
+            Object actual = shaders.getMethod("getShaderPackName").invoke(null);
+            if (!expected.equals(actual)
+                    || org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM) == 0) {
+                throw new AssertionError("Requested shader pack is not active in the translucent pass");
+            }
+            SmokeTestReport.record("shader-pack-active");
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError("Cannot verify the requested shader pack", failure);
+        }
+    }
+
     public static void resetModels() {
+        terrainBatches = 0;
         barrierPasses = 0;
         cameraPasses = 0;
         eyeMask = 0;

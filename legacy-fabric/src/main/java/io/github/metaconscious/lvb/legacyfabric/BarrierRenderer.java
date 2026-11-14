@@ -1,27 +1,44 @@
 package io.github.metaconscious.lvb.legacyfabric;
 
+import com.mojang.blaze3d.platform.GLX;
+import io.github.metaconscious.lvb.core.TranslucentOrder;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.CullingCameraView;
 import net.minecraft.client.render.Tessellator;
+import net.minecraft.client.render.VertexBuffer;
 import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.render.block.BlockRenderManager;
+import net.minecraft.client.world.BuiltChunk;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.chunk.Chunk;
 import org.lwjgl.opengl.GL11;
 
-/** A barrier-only batch drawn within the world's translucent pass, on the client thread. */
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.function.Supplier;
+
+/** Builds barrier geometry and orders it with compiled translucent terrain on the client thread. */
 public final class BarrierRenderer {
+    private static final Method VBO_REGION = vboRegionMethod();
     private final BarrierRenderState renderState = new BarrierRenderState();
+    private final TranslucentOrder order = new TranslucentOrder();
     private Tessellator tessellator;
     private BufferBuilder.DrawArrayParameters empty;
     private boolean rendering;
 
     public void render(MinecraftClient client, Entity camera, double tickDelta) {
+        renderWithTerrain(client, camera, tickDelta, Collections::emptyList);
+    }
+
+    public boolean renderWithTerrain(MinecraftClient client, Entity camera, double tickDelta,
+                                     Supplier<List<TranslucentBatch>> terrain) {
         if (!client.isOnThread()) {
             throw new IllegalStateException("Barrier rendering requires the client thread");
         }
@@ -29,11 +46,11 @@ public final class BarrierRenderer {
             throw new IllegalStateException("Barrier rendering is not reentrant");
         }
         if (!LegacyFabricClient.barriersVisible() || client.world == null) {
-            return;
+            return false;
         }
         rendering = true;
         try {
-            draw(client, camera, tickDelta);
+            return draw(client, camera, tickDelta, terrain);
         } catch (RuntimeException | Error failure) {
             // A failed model or uploader can leave the builder open or partially consumed.
             // Discard only our CPU batch; preserve the exception and allow the next frame to build anew.
@@ -45,7 +62,39 @@ public final class BarrierRenderer {
         }
     }
 
-    private void draw(MinecraftClient client, Entity camera, double tickDelta) {
+    public static List<TranslucentBatch> compiledTerrain(List<BuiltChunk> chunks) {
+        List<TranslucentBatch> terrain = new ArrayList<>(chunks.size());
+        for (BuiltChunk chunk : chunks) {
+            TranslucentBatch batch = ((TranslucentMesh) chunk.method_10170()).lvb$translucentBatch();
+            if (batch != null) {
+                batch.transform(inVboRegion(chunk) ? null : chunk::method_10169);
+                terrain.add(batch);
+            }
+        }
+        return terrain;
+    }
+
+    private static Method vboRegionMethod() {
+        try {
+            return VertexBuffer.class.getMethod("getVboRegion");
+        } catch (NoSuchMethodException absent) {
+            return null;
+        }
+    }
+
+    private static boolean inVboRegion(BuiltChunk chunk) {
+        if (VBO_REGION == null || !GLX.supportsVbo()) {
+            return false;
+        }
+        try {
+            return VBO_REGION.invoke(chunk.method_10165(net.minecraft.client.render.RenderLayer.TRANSLUCENT.ordinal())) != null;
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException("Cannot inspect the terrain vertex buffer region", failure);
+        }
+    }
+
+    private boolean draw(MinecraftClient client, Entity camera, double tickDelta,
+                         Supplier<List<TranslucentBatch>> terrain) {
         if (tessellator == null) {
             tessellator = new Tessellator(4096);
             empty = tessellator.getBuffer().new DrawArrayParameters(new int[0], VertexFormats.BLOCK);
@@ -83,17 +132,30 @@ public final class BarrierRenderer {
         }
         // Vertices already use camera-relative coordinates, preserving precision far from the origin.
         buffer.sortQuads(0, 0, 0);
+        buffer.end();
         if (buffer.getVertexCount() == 0) {
-            tessellator.draw();
-            return;
+            return false;
+        }
+        List<TranslucentBatch> batches = new ArrayList<>(terrain.get());
+        TranslucentBatch barriers = new TranslucentBatch(buffer.method_9727());
+        barriers.place(cameraX, cameraY, cameraZ, null);
+        batches.add(barriers);
+        order.clear();
+        for (int i = 0; i < batches.size(); i++) {
+            batches.get(i).appendOrder(order, i, cameraX, cameraY, cameraZ);
         }
         // The caller owns blend, fog, depth, atlas and projection state.
         renderState.capture();
         try {
+            GL11.glMatrixMode(GL11.GL_MODELVIEW);
             client.gameRenderer.enableLightmap();
-            tessellator.draw();
+            order.draw((batch, first, count) -> {
+                renderState.bindAtlas();
+                batches.get(batch).draw(first, count, cameraX, cameraY, cameraZ);
+            });
         } finally {
             renderState.restore(client);
         }
+        return true;
     }
 }
