@@ -62,8 +62,9 @@ tests use a fake Modrinth service and temporary files. Extend artifact checks wh
 changing metadata or packaging. Run `./gradlew clean build` before submitting changes.
 Validate workflow changes with `actionlint`.
 
-`smokeTest` requires a display; use `xvfb-run -a ./gradlew smokeTest` on a headless Linux
-system with Xvfb installed. It uses fresh directories under each adapter's `build`,
+`smokeTest` requires a display. On headless Linux, install Xvfb, `xrandr`, and Mesa OpenGL
+drivers, then run `LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a ./gradlew smokeTest`.
+It uses fresh directories under each adapter's `build`,
 exits automatically, and writes `build/reports/smoke-test.txt` in each adapter. CI runs
 these checks before staging. Test mod classes and resources are excluded from distributions.
 
