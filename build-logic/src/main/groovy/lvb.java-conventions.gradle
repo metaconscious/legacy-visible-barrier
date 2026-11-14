@@ -3,7 +3,13 @@ plugins { id 'java-library' }
 group = 'io.github.metaconscious.mod'
 version = providers.gradleProperty('mod_version').get()
 
-repositories { mavenCentral() }
+repositories {
+    mavenCentral()
+    exclusiveContent {
+        forRepository { mavenCentral { name = 'MavenCentralAsm' } }
+        filter { includeGroup 'org.ow2.asm' }
+    }
+}
 
 java {
     toolchain { languageVersion = JavaLanguageVersion.of(21) }

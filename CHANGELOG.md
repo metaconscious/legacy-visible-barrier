@@ -6,6 +6,7 @@ surface is defined in [docs/compatibility.md](docs/compatibility.md).
 ## [1.2.0] - Unreleased
 
 - Build Legacy Fabric and Ornithe artifacts from one four-project Gradle build.
+- Provision Java toolchains for Gradle and IntelliJ IDEA builds.
 - Share dependency-free visibility logic, translations, and barrier assets.
 - Enforce client-thread mutation and publish visibility safely to rendering workers.
 - Ignore queued toggles outside a world while retaining visibility across connections.

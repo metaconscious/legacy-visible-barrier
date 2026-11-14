@@ -40,6 +40,10 @@ Build conventions configure Java 8 compilation, Java 8 tests, reproducible archi
 ordering, and adapter packaging. Loader plugins apply only to adapter projects. The
 root build aggregates checks and distributions; it contains no mod sources.
 
+Committed daemon JVM criteria select JDK 21 for both command-line and IDE builds.
+Each settings build configures toolchain provisioning, so the included build can resolve
+its compiler independently and the main build can provision the Java 8 test runtime.
+
 ## Boundaries
 
 Core production compilation and runtime classpaths contain no external dependencies.

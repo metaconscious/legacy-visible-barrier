@@ -14,6 +14,19 @@ plugins {
 group = 'io.github.metaconscious.mod'
 version = providers.gradleProperty('mod_version').get()
 
+tasks.named('updateDaemonJvm') {
+    languageVersion = JavaLanguageVersion.of(21)
+    toolchainPlatforms = [
+            org.gradle.platform.OperatingSystem.LINUX,
+            org.gradle.platform.OperatingSystem.MAC_OS,
+            org.gradle.platform.OperatingSystem.WINDOWS
+    ].collectMany { os ->
+        [org.gradle.platform.Architecture.X86_64, org.gradle.platform.Architecture.AARCH64].collect { arch ->
+            BuildPlatformFactory.of(arch, os)
+        }
+    }
+}
+
 configurations {
     coreArchive { canBeConsumed = false; transitive = false }
     legacyDistribution { canBeConsumed = false; transitive = false }

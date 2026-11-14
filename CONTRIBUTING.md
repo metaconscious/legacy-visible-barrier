@@ -2,9 +2,15 @@
 
 ## Development setup
 
-Install JDK 21, JDK 8, and Python 3.10 or newer. Set `JAVA_HOME` to JDK 21. Gradle detects
-installed JDKs; `LVB_BUILD_JDK` and `LVB_TEST_JDK` can explicitly identify their installation
-directories. CI also uses the standard `JAVA_HOME_21_X64` and `JAVA_HOME_8_X64` variables.
+Install Java 8 or newer to launch the wrapper, and Python 3.10 or newer. The committed
+`gradle/gradle-daemon-jvm.properties` selects JDK 21 for the Gradle daemon. Compilation
+also uses JDK 21; tests and development clients use JDK 8.
+
+Gradle detects installed JDKs first and provisions missing versions into its user home
+(`~/.gradle/jdks` by default). The root and included `build-logic` builds both configure
+the Foojay toolchain resolver. The first build requires network access. For preinstalled
+toolchains, `LVB_BUILD_JDK` and `LVB_TEST_JDK` can identify their installation directories.
+CI also uses the standard `JAVA_HOME_21_X64` and `JAVA_HOME_8_X64` variables.
 
 ```sh
 gh repo clone metaconscious/legacy-visible-barrier
@@ -15,6 +21,18 @@ cd legacy-visible-barrier
 Use `gradlew.bat` on Windows. The build uses Python's `python3` command. The wrapper pins
 Gradle 8.14.7 and verifies the distribution checksum. Loom 1.11.8, Legacy Looming 1.11.8,
 and Ploceus 1.11.6 share the JDK 21 build runtime; mod classes compile with `--release 8`.
+
+### IntelliJ IDEA
+
+Open the repository as a Gradle project and select the Gradle wrapper as its distribution.
+IntelliJ IDEA 2025.1 and newer supports
+[daemon JVM criteria](https://www.jetbrains.com/help/idea/gradle.html) by default.
+Reload the Gradle project after changing build settings; the Gradle JVM criteria should
+show Java 21. Delegate builds and tests to Gradle so the compiler, test runtime,
+resource processing, and remapping use the project's configuration.
+
+To refresh the daemon JDK download URLs while retaining Java 21, run
+`./gradlew updateDaemonJvm --jvm-version=21` and commit the generated properties file.
 
 Useful tasks:
 

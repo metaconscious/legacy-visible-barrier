@@ -26,11 +26,16 @@ and suppress the ordinary barrier particles. Collision and world data remain unc
 
 ## Development
 
-Install JDK 21, JDK 8, and Python 3.10+, then run:
+Install Java 8 or newer to launch the wrapper, and Python 3.10+, then run:
 
 ```sh
 ./gradlew clean build
 ```
+
+Gradle selects JDK 21 for the build and JDK 8 for tests and development clients. Missing
+JDKs are downloaded automatically and cached in Gradle's user home. The first build
+requires network access. IntelliJ IDEA uses the same settings when the project is
+imported with the Gradle wrapper.
 
 The build produces separate remapped JARs in `legacy-fabric/build/libs` and
 `ornithe/build/libs`. The projects share their core logic and assets. Read
