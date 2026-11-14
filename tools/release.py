@@ -178,17 +178,19 @@ def publish_modrinth(client, records, directory, completed):
     return result
 
 
-def gh(*args, allow_missing=False):
+def gh(*args):
     result = subprocess.run(["gh", *args], text=True, capture_output=True, check=False)
     if result.returncode:
-        if allow_missing:
-            try:
-                if str(json.loads(result.stdout).get("status")) == "404":
-                    return None
-            except (ValueError, AttributeError):
-                pass
         raise RuntimeError(f"GitHub CLI operation failed: {result.stderr.strip()}")
     return result.stdout
+
+
+def find_github_release(tag):
+    pages = json.loads(gh("api", f"repos/{REPOSITORY}/releases?per_page=100", "--paginate", "--slurp"))
+    matches = [release for page in pages for release in page if release["tag_name"] == tag]
+    if len(matches) > 1:
+        raise ValueError(f"Multiple GitHub releases use tag {tag}")
+    return matches[0] if matches else None
 
 
 def publish(manifest_path):
@@ -199,8 +201,7 @@ def publish(manifest_path):
     commit = json.loads(gh("api", f"repos/{REPOSITORY}/commits/{tag}"))["sha"]
     if commit != manifest["commit"]:
         raise ValueError("Release tag no longer matches the built commit")
-    raw = gh("api", f"repos/{REPOSITORY}/releases/tags/{tag}", allow_missing=True)
-    release = json.loads(raw) if raw else None
+    release = find_github_release(tag)
     assets = [v["filename"] for v in manifest["versions"]] + ["release.json", "SHA512SUMS"]
     present = set()
     with tempfile.TemporaryDirectory(prefix="lvb-release-") as tmp:
