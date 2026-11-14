@@ -41,7 +41,7 @@ Useful tasks:
 | `./gradlew :core:test` | Domain and lifecycle tests on Java 8 |
 | `./gradlew testReleaseTools` | SemVer and publisher tests without network publication |
 | `./gradlew verifyArtifacts` | Build and inspect both remapped JARs |
-| `./gradlew smokeTest` | Start both isolated clients on Java 8 and verify startup, controls, and Mixins |
+| `./gradlew smokeTest` | Verify both Java 8 clients, controls, rendering, and chunk lifecycle |
 | `./gradlew :legacy-fabric:runClient` | Legacy Fabric development client |
 | `./gradlew :ornithe:runClient` | Ornithe development client |
 | `./gradlew stageRelease` | Stage verified JARs and a source/hash manifest from a clean checkout |
@@ -68,6 +68,16 @@ It uses fresh directories under each adapter's `build`,
 exits automatically, and writes `build/reports/smoke-test.txt` in each adapter. CI runs
 these checks before staging. Test mod classes and resources are excluded from distributions.
 
+The automated client test creates an isolated world and exercises the real renderer.
+It compares framebuffer pixels before and after toggles, counts barrier models and
+vertices, checks opaque occlusion and frustum culling, and rejects terrain invalidation
+or non-barrier tessellation during the barrier pass. It also covers chunk boundary faces,
+block changes, full and partial chunk packets, unloads, world switches, resource reloads,
+VBO/display-list rendering, a replacement terrain-layer method, and restoration of
+foreign OpenGL state. The frame-hook fixture runs with both native and cancelled
+terrain draws. Published rendering-mod checks and their scope are listed in
+[compatibility.md](docs/compatibility.md).
+
 For dependency updates, preserve the intermediary generation and update explicit module
 coordinates together. OSL module versions are pinned from the OSL 0.16.3 distribution.
 Check both adapters when changing Loom, mappings, resources, or the core. Do not raise
@@ -80,9 +90,12 @@ launcher environment:
 
 1. Start at the title screen; confirm startup completes without Mixin errors.
 2. Open Controls; confirm one toggle binding, initially `B`, in the existing category.
-3. Enter a creative singleplayer world and place adjacent barriers.
+3. Enter a creative singleplayer world and place adjacent barriers, including a pair
+   across a chunk boundary. Place stone in front of another barrier.
 4. Toggle visibility; confirm the model, translucency, internal-face culling, translated
    feedback, and disappearance of barrier particles while visible.
+   Toggle repeatedly while moving and turning: terrain must remain stable without
+   flicker, and the barrier behind stone must remain occluded.
 5. Toggle off; confirm ordinary hidden barriers and vanilla particle behavior return.
 6. Rebind the key, reload resources, change worlds, and reconnect. Confirm the binding
    works and visibility is retained. Restart the client and confirm visibility is hidden.

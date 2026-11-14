@@ -23,6 +23,7 @@ versions and supported environments. Releases before 1.2.0 use their historical 
 Barriers start hidden each time the client launches. Visibility is retained when changing
 worlds or reconnecting within that process. Visible barriers use a translucent block model
 and suppress the ordinary barrier particles. Collision and world data remain unchanged.
+Toggling affects only the barrier render pass, without reloading or rebuilding terrain.
 
 ## Development
 

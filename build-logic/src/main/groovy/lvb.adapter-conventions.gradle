@@ -58,6 +58,10 @@ sourceSets {
 }
 
 loom {
+    mixin {
+        add sourceSets.main, "lvb-${project.name}.refmap.json"
+        add sourceSets.smokeTest, "lvb-${project.name}-smoke.refmap.json"
+    }
     mods {
         lvb { sourceSet sourceSets.main }
         lvb_smoke { sourceSet sourceSets.smokeTest }
@@ -74,7 +78,7 @@ loom {
 
 tasks.named('runSmokeTest', JavaExec) {
     group = 'verification'
-    description = 'Starts an isolated client to verify initialization, controls and Mixin application.'
+    description = 'Verifies client initialization, controls, barrier rendering and chunk lifecycle.'
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
     timeout = Duration.ofMinutes(5)
     doFirst {

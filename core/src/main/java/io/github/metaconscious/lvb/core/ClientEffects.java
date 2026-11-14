@@ -6,6 +6,4 @@ public interface ClientEffects {
     boolean isWorldAvailable();
 
     void showVisibility(boolean visible);
-
-    void refreshRenderer();
 }

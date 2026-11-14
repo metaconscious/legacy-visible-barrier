@@ -19,7 +19,7 @@ import static org.junit.Assert.fail;
 
 public class VisibilityControllerTest {
     @Test
-    public void togglesStartHiddenAndPublishFeedbackAndRendererChanges() {
+    public void togglesStartHiddenAndOnlyPublishVisibilityAndFeedback() {
         RecordingClient client = new RecordingClient();
         VisibilityController controller = new VisibilityController(client);
 
@@ -28,7 +28,7 @@ public class VisibilityControllerTest {
         assertTrue(controller.isVisible());
         controller.toggle();
         assertFalse(controller.isVisible());
-        assertEquals(Arrays.asList("visible", "refresh", "hidden", "refresh"), client.events);
+        assertEquals(Arrays.asList("visible", "hidden"), client.events);
     }
 
     @Test
@@ -45,12 +45,12 @@ public class VisibilityControllerTest {
         client.inWorld = false;
         controller.toggle();
         assertTrue(controller.isVisible());
-        assertEquals(Arrays.asList("visible", "refresh"), client.events);
+        assertEquals(Arrays.asList("visible"), client.events);
 
         client.inWorld = true;
         controller.toggle();
         assertFalse(controller.isVisible());
-        assertEquals(Arrays.asList("visible", "refresh", "hidden", "refresh"), client.events);
+        assertEquals(Arrays.asList("visible", "hidden"), client.events);
     }
 
     @Test
@@ -119,8 +119,5 @@ public class VisibilityControllerTest {
         public void showVisibility(boolean visible) {
             events.add(visible ? "visible" : "hidden");
         }
-
-        @Override
-        public void refreshRenderer() { events.add("refresh"); }
     }
 }

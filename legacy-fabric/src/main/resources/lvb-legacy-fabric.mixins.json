@@ -7,7 +7,9 @@
   "client": [
     "BarrierBlockMixin",
     "BarrierParticleMixin",
-    "BlockStateMapperMixin"
+    "BlockStateMapperMixin",
+    "ChunkMixin",
+    "GameRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

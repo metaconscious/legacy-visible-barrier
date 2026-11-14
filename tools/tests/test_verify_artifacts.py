@@ -87,6 +87,18 @@ class ArtifactTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Shared resource changed during packaging: assets/lvb/icon.png"):
             verify_jar(self.jar, "legacy-fabric", "1.2.0", self.core, WindowsAssets(ASSETS))
 
+    def test_barrier_frame_hook_must_be_packaged(self):
+        del self.entries["io/github/metaconscious/lvb/legacyfabric/mixin/GameRendererMixin.class"]
+        self.write_jar()
+        with self.assertRaisesRegex(ValueError, "Missing Mixin GameRendererMixin"):
+            verify_jar(self.jar, "legacy-fabric", "1.2.0", self.core, ASSETS)
+
+    def test_smoke_mixin_configuration_must_not_be_packaged(self):
+        self.entries["lvb-legacy-fabric-smoke.mixins.json"] = b"{}"
+        self.write_jar()
+        with self.assertRaisesRegex(ValueError, "Test mod files leaked"):
+            verify_jar(self.jar, "legacy-fabric", "1.2.0", self.core, ASSETS)
+
 
 if __name__ == "__main__":
     unittest.main()

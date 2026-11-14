@@ -17,7 +17,7 @@ public final class LegacyFabricClient implements ClientModInitializer {
     private static final AtomicBoolean INITIALIZED = new AtomicBoolean();
     private static volatile VisibilityView visibility = () -> false;
 
-    /** Safe before client initialization and from chunk rendering workers. */
+    /** Safe before client initialization and from rendering threads. */
     public static boolean barriersVisible() {
         return visibility.isVisible();
     }
@@ -37,11 +37,6 @@ public final class LegacyFabricClient implements ClientModInitializer {
             @Override
             public void showVisibility(boolean visible) {
                 client.player.sendMessage(new TranslatableText(visible ? "lvb.to_visible" : "lvb.to_invisible"));
-            }
-
-            @Override
-            public void refreshRenderer() {
-                client.worldRenderer.reload();
             }
         });
         visibility = controller;

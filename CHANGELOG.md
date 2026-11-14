@@ -3,6 +3,17 @@
 Versions follow [Semantic Versioning 2.0.0](https://semver.org/). The public compatibility
 surface is defined in [docs/compatibility.md](docs/compatibility.md).
 
+## [1.3.0] - Unreleased
+
+- Eliminate terrain reloads and screen flicker when toggling barrier visibility.
+- Draw barriers in a separate, depth-tested translucent pass in both adapters.
+- Track barriers through block changes, chunk data updates, unloads, and world changes.
+- Preserve lightmap, color, vertex-array and buffer state around barrier drawing.
+- Keep the barrier frame hook reachable when a mod replaces or cancels terrain drawing.
+- Document tested rendering mods, supported loader generations, and translucent ordering.
+- Verify barrier-only rendering, adjacent-face culling, occlusion, and unchanged terrain
+  through automated client rendering tests on Java 8.
+
 ## [1.2.0] - Unreleased
 
 - Build Legacy Fabric and Ornithe artifacts from one four-project Gradle build.

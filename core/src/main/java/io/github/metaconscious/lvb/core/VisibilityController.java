@@ -24,7 +24,6 @@ public final class VisibilityController implements VisibilityView {
         }
         visible = !visible;
         client.showVisibility(visible);
-        client.refreshRenderer();
     }
 
     @Override

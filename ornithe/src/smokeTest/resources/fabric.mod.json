@@ -6,5 +6,6 @@
   "entrypoints": {
     "client": ["io.github.metaconscious.lvb.ornithe.ClientSmokeTest"]
   },
+  "mixins": ["lvb-ornithe-smoke.mixins.json"],
   "depends": { "lvb": "*" }
 }

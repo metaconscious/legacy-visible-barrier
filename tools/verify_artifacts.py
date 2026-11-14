@@ -83,7 +83,8 @@ def verify_jar(path, target, base, core_classes, assets):
         require("LICENSE" in names, "License is missing")
         require(not any(name.endswith(".jar") for name in names), "Unexpected nested dependencies")
         classes = {name: jar.read(name) for name in names if name.endswith(".class")}
-        require(not any("SmokeTest" in name for name in classes), "Test mod classes leaked into the distribution")
+        require(not any("SmokeTest" in name or "-smoke." in name for name in names),
+                "Test mod files leaked into the distribution")
         for name, data in classes.items():
             require(data[:4] == b"\xca\xfe\xba\xbe", f"Invalid class file: {name}")
             require(struct.unpack_from(">H", data, 6)[0] == 52, f"Not Java 8 bytecode: {name}")
@@ -116,7 +117,7 @@ def verify_jar(path, target, base, core_classes, assets):
         mixins = json.loads(jar.read(config_name))
         require(mixins["required"] and mixins["compatibilityLevel"] == "JAVA_8", "Mixin requirements changed")
         require(not mixins.get("mixins") and not mixins.get("server"), "Mixins must be client-only")
-        expected_mixins = {"BarrierBlockMixin", "BarrierParticleMixin",
+        expected_mixins = {"BarrierBlockMixin", "BarrierParticleMixin", "ChunkMixin", "GameRendererMixin",
                            "BlockStateMapperMixin" if target == "legacy-fabric" else "BlockModelsMixin"}
         require(set(mixins["client"]) == expected_mixins, "Unexpected client Mixins")
         require(mixins["injectors"]["defaultRequire"] == 1, "Mixin injection failures must be fatal")

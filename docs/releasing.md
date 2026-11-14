@@ -7,8 +7,8 @@ release version has no build metadata. Both platforms are released together:
 
 | Release | Artifact and Modrinth version | Modrinth loader | Required dependency project |
 | --- | --- | --- | --- |
-| `1.2.0` | `1.2.0+legacy-fabric` | `legacy-fabric` | `9CJED7xi` — Legacy Fabric API |
-| `1.2.0` | `1.2.0+ornithe` | `ornithe` | `EHGtwpJv` — Ornithe Standard Libraries |
+| `1.3.0` | `1.3.0+legacy-fabric` | `legacy-fabric` | `9CJED7xi` — Legacy Fabric API |
+| `1.3.0` | `1.3.0+ornithe` | `ornithe` | `EHGtwpJv` — Ornithe Standard Libraries |
 
 The Modrinth project is `FSLuAotK` (`legacy-visible-barrier`). Each record lists Minecraft
 `1.8.9` and one primary remapped JAR. Modrinth permits duplicate version numbers, but its
@@ -46,7 +46,7 @@ read-only repository access and no publishing token.
 3. Create the tag at the reviewed commit and dispatch the release workflow:
 
    ```sh
-   release_tag=v1.2.0
+   release_tag=v1.3.0
    release_commit=$(git rev-parse HEAD)
    gh api --method POST repos/metaconscious/legacy-visible-barrier/git/refs \
      -f ref="refs/tags/$release_tag" -f sha="$release_commit"
