@@ -18,69 +18,53 @@ mapping environment. Quilt and generation 2 are outside this release's support m
 The mod is client-only. It does not change collision, server state, or world data. Both
 artifacts have the same mod ID and are alternative installations.
 
-## Rendering mods and overlays
+## Rendering compatibility
 
-The following 1.8.9 projects and builds were checked on 2026-11-14.
+The barrier pass draws after translucent terrain. It preserves the vertex-array,
+lightmap and colour state it changes. A renderer replacing `GameRenderer` must retain
+its translucent terrain call; [architecture.md](architecture.md) describes the hook.
 
-Modrinth's exact-build download counts were 5,421 / 7,018 for the linked Legacy Fabric /
-Ornithe OptiFabric builds, 8,048 for AxolotlClient and 4,479 for Phosphor-Legacy;
-these count downloads, not unique Minecraft 1.8.9 users.
+Barrier quads are sorted within their own batch. Intersections with water, glass or
+other translucent geometry can blend in the wrong order. Opaque blocks occlude
+barriers. External shader packs are untested; barriers do not participate in OptiFine's
+terrain shadow pass.
 
-| Project | Relevant build and requirements |
-| --- | --- |
-| Legacy OptiFabric | Separate generation 1 builds: [2.3.6+1.3.1-1.13.2 for Legacy Fabric](https://modrinth.com/mod/legacy-optifabric/version/VxbRKwpM) and [2.3.6+b1.7.3-1.14.4 for Ornithe](https://modrinth.com/mod/legacy-optifabric/version/keYvdDsA). Both use Java 8 and require Loader 0.15.4 or later. Install a separate [OptiFine 1.8.9 jar](https://optifine.net/downloads), such as HD U M5. OptiFabric [replaces game classes](https://github.com/tildejustin/optifabric#how-it-works) with OptiFine's implementations; shader packs and rendering options need separate checks. |
-| LegacyEnhance | [1.0.0](https://github.com/Hankung7183/LegacyEnhance/releases/tag/v1.0.0) targets Legacy Fabric 1.8.9, Java 8 and Loader 0.14.19 or later; its bundled configuration library requires Legacy Fabric API 1.7.0 or later. Its [features](https://github.com/Hankung7183/LegacyEnhance#features) include entity/particle culling and lighting/rendering changes. |
-| Phosphor-Legacy / FPS Plus | [Phosphor-Legacy 0.1.5+1.8.9](https://modrinth.com/mod/phosphor-legacy/version/UdBfSdpd) optimizes lighting; [FPS Plus Ver-D](https://modrinth.com/mod/fpspluslf/version/Zh2JLFek) changes math functions. These are Java 8 Legacy Fabric builds that retain the terrain renderer. |
-| HUD and world overlays | [AxolotlClient 3.0.6+1.8.9](https://modrinth.com/mod/axolotlclient/version/EpBQmzkD), [Extended Ingame Hud 0.1.0](https://modrinth.com/mod/extended-ingame-hud/version/VksKaGko), [Legacy Block Highlight 1.0.0](https://modrinth.com/mod/legacy-block-highlight/version/1CYsBYnm) and [Legacy Hitbox 1.0.0](https://modrinth.com/mod/legacy-hitbox/version/JC9A2uTa) have Java 8 Legacy Fabric builds whose declared dependencies fit the baseline above. |
-| Oldium | The [1.8.9 release](https://github.com/OldiumMC/oldium/releases/tag/1.8.9), `oldium-fabric-1.8.9-1.0-SNAPSHOT.jar`, is a Legacy Fabric terrain-renderer replacement requiring **Java 17 or later**. |
-| Carbon | [Source is available](https://github.com/ChlorineMC/Carbon-Mod), targeting Legacy Fabric 1.8.9 and [Java 17 or later](https://github.com/ChlorineMC/Carbon-Mod/blob/master/src/main/resources/fabric.mod.json). The repository has no published GitHub release; its former Modrinth `carbon-performance` page is unavailable. |
-| Argentum / Argentum Extras | [Argentum 1.0.2](https://modrinth.com/mod/argentum/version/RxzOYPTx) uses the Celeritas terrain renderer. Its [release build configuration](https://github.com/QuicksilverMC/Argentum/blob/v1.0.2/buildSrc/src/main/kotlin/mc.gradle.kts) uses **Ornithe generation 2 and Java 25**. It and its Extras HUD/visual controls are outside this release's generation 1 support matrix. |
-| Furiah's Visuals | The author's [installation requirements](https://furiah.net/download?loader=fabric) specify Legacy Fabric, Java 8, Loader 0.16 or later and **Legacy Fabric API 1.13.5 or later**. This needs an API upgrade from the baseline above. Its shader effects have their own OptiFine/shader-pack fallback rules. |
+### Tested mod combinations
 
-The official [MiniHUD 1.8.9 files](https://modrinth.com/mod/minihud/versions?g=1.8.9)
-target Forge. The official [Tweakeroo](https://modrinth.com/mod/tweakeroo/versions)
-and [Litematica](https://modrinth.com/mod/litematica/versions) listings contain no
-1.8.9 builds.
+The following builds were exercised with visible and hidden barriers, both terrain
+backends, resource reloads and world changes. Mod versions and enabled features are
+part of each combination.
 
-## Barrier render-pass compatibility
+| Environment | Mods | Settings |
+| --- | --- | --- |
+| Both adapters | OptiFine HD U M5 with OptiFabric [2.3.6+1.3.1-1.13.2 for Legacy Fabric](https://modrinth.com/mod/legacy-optifabric/version/VxbRKwpM) or [2.3.6+b1.7.3-1.14.4 for Ornithe](https://modrinth.com/mod/legacy-optifabric/version/keYvdDsA) | Shaders off with Fast Render off/on; internal shaders with Fast Render off. |
+| Legacy Fabric | LegacyEnhance 1.0.0, Phosphor-Legacy 0.1.5+1.8.9, FPS Plus Ver-D, Legacy Hitbox 1.0.0, Legacy Block Highlight 1.0.0 and Extended Ingame Hud 0.1.0 | Default configuration, installed together. |
+| Legacy Fabric | Legacy Hitbox 1.0.0, Legacy Block Highlight 1.0.0, LegacyEnhance 1.0.0 and Phosphor-Legacy 0.1.5+1.8.9 | Gradient hitboxes and volume highlights; also with OptiFine/OptiFabric or AxolotlClient 3.0.6. |
+| Legacy Fabric | [Legacy Chunk Borders 1.0.0](https://modrinth.com/mod/legacy-chunk-borders/version/hp3oZxHx) | Grid enabled, alone and with OptiFine/OptiFabric. |
+| Legacy Fabric | [Legacy OrthoCamera 1.0.1](https://modrinth.com/mod/legacy-orthocamera/version/PtBq0srz) | Orthographic projection, first-person camera and fixed rotation disabled; alone and with OptiFine/OptiFabric. |
+| Legacy Fabric | [AxolotlClient 3.0.6](https://modrinth.com/mod/axolotlclient/version/EpBQmzkD) | Default configuration and custom block outlines. |
+| Ornithe | [Kabo Village Marker 1.3.0](https://modrinth.com/mod/kabo-village-marker/version/wsVKa3iS) | Village spheres and golem areas; with OptiFine/OptiFabric during active mining. |
+| Ornithe | [AxolotlClient 3.1.8](https://modrinth.com/mod/axolotlclient/version/ySfusRPJ), [Waypoints 0.0.3](https://modrinth.com/mod/axolotlclient-waypoints/version/wYncBniX) and [legacy-lwjgl3 1.2.10](https://modrinth.com/mod/moehreag-legacy-lwjgl3/version/QeDzTTIm), Java 21 | Custom outlines and a world waypoint label; also with Kabo Village Marker. |
+| Ornithe | [OfftiFine 2.1.1](https://modrinth.com/mod/offtifine/version/6yzzDHuh), OptiFine/OptiFabric and legacy-lwjgl3 1.2.10, Java 21 | Default networking restrictions. |
 
-The barrier pass runs in `GameRenderer` immediately after the translucent terrain call.
-It remains reachable when a mod overwrites or cancels the terrain-layer method; a
-renderer that removes that call from `GameRenderer` needs a separate integration.
-The hook does not replace game methods or capture local variables.
+Kabo requires the Minecraft 1.8.9 variants of OSL networking 0.8.0 and config 0.5.2.
+The AxolotlClient/Waypoints combination requires OSL networking and legacy-lwjgl3
+newer than 1.2.8. These dependencies are additional to LVB's baseline APIs.
 
-Drawing preserves client vertex arrays, generic shader attributes, VBO bindings,
-current attributes and Minecraft's cached color, lightmap state and texture matrix,
-active texture units, and matrix mode. It inherits the caller's blend, depth, fog,
-shader program, framebuffer, and camera matrices. The pass does not clear buffers or
-invalidate terrain. Chunk indexes belong to client chunks; packet updates and reads
-run on the client thread. Missing chunks contribute no barriers, and no server chunk
-loading or background world reads are requested.
+### Known conflicts
 
-Barrier quads are sorted within their own batch, after translucent terrain. They are
-not globally sorted with water, stained glass, or another mod's translucent geometry;
-intersections can blend in the wrong order. Opaque blocks still occlude barriers.
-Barriers are absent from terrain meshes, including OptiFine's terrain shadow pass.
-External shader packs and their material, shadow, or post-processing effects have not
-been validated. OptiFine's internal shader mode is a separate tested case below.
+- **Kabo with OptiFine M5:** Kabo's [hook](https://github.com/SpaceWalkerRS/kabo-village-marker/blob/v1.3.0/src/main/java/kabopc/village_marker/mixin/GameRendererMixin.java)
+  follows mining-progress rendering. OptiFine skips that call when nothing is being
+  mined, hiding Kabo's overlay. Use Kabo without OptiFine for continuous markers.
+- **Legacy Block Highlight with AxolotlClient custom outlines:** Block Highlight
+  replaces vanilla outline drawing and bypasses Axolotl's outline options. Select
+  one outline provider.
+- **Published Oldium 1.8.9 JAR:** the [release](https://github.com/OldiumMC/oldium/releases/tag/1.8.9)
+  bundles `net.fabricmc.api.EnvType` and fails during startup with a loader constraint
+  violation. Its packaging must be corrected before use with this loader setup.
 
-### Tested combinations for 1.3.0
-
-Tests use remapped production JARs on Linux with Java 8, except where indicated.
-The client suite covers barrier-only pixels and model submissions, opaque occlusion,
-adjacent faces, repeated toggles without terrain invalidation, both terrain backends,
-chunk/world/resource changes, and restoration of seeded foreign graphics state.
-A separate fixture cancels terrain drawing to check that the frame hook still runs.
-
-| Combination | Result |
-| --- | --- |
-| Legacy Fabric or Ornithe + the OptiFabric 2.3.6 builds above + OptiFine HD U M5 | Passed with shaders off, Fast Render off/on, and separately with the internal shader mode and Fast Render off. No external shader pack was installed. |
-| Legacy Fabric + LegacyEnhance 1.0.0, Phosphor-Legacy 0.1.5+1.8.9, FPS Plus Ver-D, Legacy Hitbox 1.0.0, Legacy Block Highlight 1.0.0, Extended Ingame Hud 0.1.0 | Passed together using default mod configuration. |
-| Legacy Fabric + AxolotlClient 3.0.6+1.8.9 | Passed using default mod configuration. |
-| Legacy Fabric + published Oldium 1.8.9 JAR, Java 21 | Startup failed before world loading: the JAR bundles `net.fabricmc.api.EnvType`, causing a loader constraint violation. The same Java 21 profile passed without Oldium. |
-
-Coverage is LVB's rendering and lifecycle under the listed settings. Carbon, Argentum,
-and Furiah's Visuals are not tested combinations for this release.
+See [Contributing](../CONTRIBUTING.md#production-mod-compatibility-tests) for running
+checks with supplied mod JARs and configurations.
 
 ## Stable user-facing contract
 

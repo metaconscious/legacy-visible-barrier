@@ -8,18 +8,22 @@ surface is defined in [docs/compatibility.md](docs/compatibility.md).
 - Eliminate terrain reloads and screen flicker when toggling barrier visibility.
 - Draw barriers in a separate, depth-tested translucent pass in both adapters.
 - Track barriers through block changes, chunk data updates, unloads, and world changes.
-- Preserve lightmap, color, vertex-array and buffer state around barrier drawing.
+- Preserve lightmap, color, vertex-array and buffer state around barrier drawing,
+  including foreign VAOs and element buffers.
+- Enforce client-thread index access and non-reentrant rendering; recover the next
+  batch after model or upload failures while restoring graphics state.
 - Keep the barrier frame hook reachable when a mod replaces or cancels terrain drawing.
 - Document tested rendering mods, supported loader generations, and translucent ordering.
-- Verify barrier-only rendering, adjacent-face culling, occlusion, and unchanged terrain
-  through automated client rendering tests on Java 8.
+- Add production-namespace compatibility tests for active hitboxes, block highlights,
+  chunk grids, orthographic cameras, village markers, custom outlines and waypoint labels.
+- Add client regression checks for rendering isolation, state restoration and lifecycle updates.
 
 ## [1.2.0] - Unreleased
 
 - Build Legacy Fabric and Ornithe artifacts from one four-project Gradle build.
 - Provision Java toolchains for Gradle and IntelliJ IDEA builds.
 - Share dependency-free visibility logic, translations, and barrier assets.
-- Enforce client-thread mutation and publish visibility safely to rendering workers.
+- Enforce client-thread mutation and publish visibility safely to readers.
 - Ignore queued toggles outside a world while retaining visibility across connections.
 - Declare client-only initialization and explicit runtime dependencies for both artifacts.
 - Verify core behavior, release contracts, Java 8 bytecode, metadata, and packaged resources.

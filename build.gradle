@@ -1,3 +1,6 @@
+import groovy.json.JsonOutput
+import net.fabricmc.loom.task.RemapJarTask
+
 buildscript {
     configurations.classpath {
         resolutionStrategy.force 'net.fabricmc:fabric-loom:1.11.8'
@@ -13,6 +16,54 @@ plugins {
 
 group = 'io.github.metaconscious.mod'
 version = providers.gradleProperty('mod_version').get()
+
+subprojects {
+    plugins.withId('lvb.adapter-conventions') {
+        // Optional production-namespace fixtures for mods that cannot run in Loom's named environment.
+        def directory = layout.buildDirectory.dir('mod-compatibility')
+        def smokeJar = tasks.register('compatibilitySmokeJar', Jar) {
+            from sourceSets.smokeTest.output
+            archiveFileName = "${project.name}-smoke-dev.jar"
+            destinationDirectory = directory
+        }
+        def remappedSmoke = tasks.register('remapCompatibilitySmoke', RemapJarTask) {
+            inputFile = smokeJar.flatMap { it.archiveFile }
+            archiveFileName = "${project.name}-smoke.jar"
+            destinationDirectory = directory
+            addNestedDependencies = false
+        }
+
+        tasks.register('prepareModCompatibility') {
+            group = 'verification'
+            description = 'Prepares remapped client tests and a local launch manifest for third-party mods.'
+            dependsOn remappedSmoke, tasks.named('remapJar'), tasks.named('downloadAssets'), tasks.named('configureLaunch')
+            doLast {
+                // Use published API JARs, not their named development copies.
+                def dependencies = (configurations.modImplementation.dependencies + configurations.modRuntimeOnly.dependencies)
+                        .collect { it.copy() }
+                def mods = configurations.detachedConfiguration(*dependencies).resolve()
+                def minecraft = loom.minecraftProvider
+                def launch = [
+                        platform: project.name,
+                        version: project.version,
+                        mapping: [generation: 1, minecraft: minecraft_version,
+                                  namespace: project.name == 'legacy-fabric' ? 'legacy-intermediary' : 'calamus',
+                                  build: project.name == 'legacy-fabric' ? legacy_yarn_build : ornithe_feather_build],
+                        java: tasks.named('runSmokeTest').get().javaLauncher.get().executablePath.asFile.path,
+                        classpath: sourceSets.smokeTest.runtimeClasspath.files.collect { it.path },
+                        core: configurations.bundledCore.singleFile.path,
+                        minecraft: minecraft.minecraftClientJar.path,
+                        assets: new File(loom.files.userCache, 'assets').path,
+                        assetIndex: minecraft.versionInfo.assetIndex().fabricId(minecraft.minecraftVersion()),
+                        natives: configurations.minecraftNatives.files.collect { it.path },
+                        mods: mods.collect { it.path } + [tasks.named('remapJar').get().archiveFile.get().asFile.path,
+                                                        remappedSmoke.get().archiveFile.get().asFile.path]
+                ]
+                directory.get().file('launch.json').asFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(launch)) + '\n'
+            }
+        }
+    }
+}
 
 tasks.named('updateDaemonJvm') {
     languageVersion = JavaLanguageVersion.of(21)
@@ -60,7 +111,7 @@ tasks.register('verifyArtifacts', Exec) {
 
 tasks.register('testReleaseTools', Exec) {
     group = 'verification'
-    description = 'Tests release validation and publication against local test doubles.'
+    description = 'Tests release, artifact and compatibility tooling with local fixtures.'
     commandLine 'python3', '-m', 'unittest', 'discover', '-s', 'tools/tests', '-v'
 }
 

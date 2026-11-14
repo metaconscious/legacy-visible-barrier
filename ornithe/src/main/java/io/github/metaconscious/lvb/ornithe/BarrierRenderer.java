@@ -17,13 +17,38 @@ import org.lwjgl.opengl.GL11;
 /** A barrier-only batch drawn within the world's translucent pass, on the client thread. */
 public final class BarrierRenderer {
     private final BarrierRenderState renderState = new BarrierRenderState();
-    private final Tessellator tessellator = new Tessellator(4096);
-    private final BufferBuilder.State empty =
-            tessellator.getBuilder().new State(new int[0], DefaultVertexFormat.BLOCK);
+    private Tessellator tessellator;
+    private BufferBuilder.State empty;
+    private boolean rendering;
 
     public void render(Minecraft client, Entity camera, double tickDelta) {
+        if (!client.isOnSameThread()) {
+            throw new IllegalStateException("Barrier rendering requires the client thread");
+        }
+        if (rendering) {
+            throw new IllegalStateException("Barrier rendering is not reentrant");
+        }
         if (!OrnitheClient.barriersVisible() || client.world == null) {
             return;
+        }
+        rendering = true;
+        try {
+            draw(client, camera, tickDelta);
+        } catch (RuntimeException | Error failure) {
+            // A failed model or uploader can leave the builder open or partially consumed.
+            // Discard only our CPU batch; preserve the exception and allow the next frame to build anew.
+            tessellator = null;
+            empty = null;
+            throw failure;
+        } finally {
+            rendering = false;
+        }
+    }
+
+    private void draw(Minecraft client, Entity camera, double tickDelta) {
+        if (tessellator == null) {
+            tessellator = new Tessellator(4096);
+            empty = tessellator.getBuilder().new State(new int[0], DefaultVertexFormat.BLOCK);
         }
         double cameraX = camera.prevTickX + (camera.x - camera.prevTickX) * tickDelta;
         double cameraY = camera.prevTickY + (camera.y - camera.prevTickY) * tickDelta;

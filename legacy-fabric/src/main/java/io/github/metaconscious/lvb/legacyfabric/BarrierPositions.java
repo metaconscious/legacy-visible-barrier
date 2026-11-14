@@ -1,6 +1,7 @@
 package io.github.metaconscious.lvb.legacyfabric;
 
 import net.minecraft.block.Blocks;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.block.BlockState;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.chunk.Chunk;
@@ -10,12 +11,13 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
-/** Updated with client chunk data, independently of visibility and terrain meshes. */
+/** Client-thread index with a read-only live view; no world or chunk is retained. */
 public final class BarrierPositions {
     private final Set<BlockPos> positions = new HashSet<>();
     private final Set<BlockPos> view = Collections.unmodifiableSet(positions);
 
     public Iterable<BlockPos> positions() {
+        requireClientThread();
         return view;
     }
 
@@ -23,6 +25,7 @@ public final class BarrierPositions {
         if (!chunk.getWorld().isClient) {
             return;
         }
+        requireClientThread();
         if (state.getBlock() == Blocks.BARRIER) {
             positions.add(new BlockPos(pos.getX(), pos.getY(), pos.getZ()));
         } else {
@@ -34,6 +37,7 @@ public final class BarrierPositions {
         if (!chunk.getWorld().isClient) {
             return;
         }
+        requireClientThread();
         positions.clear();
         for (ChunkSection section : chunk.getBlockStorage()) {
             if (section == null || section.isEmpty()) {
@@ -49,6 +53,12 @@ public final class BarrierPositions {
                     }
                 }
             }
+        }
+    }
+
+    private static void requireClientThread() {
+        if (!MinecraftClient.getInstance().isOnThread()) {
+            throw new IllegalStateException("Barrier index access requires the client thread");
         }
     }
 }

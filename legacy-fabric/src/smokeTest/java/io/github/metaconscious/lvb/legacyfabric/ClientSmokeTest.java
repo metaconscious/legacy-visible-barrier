@@ -29,14 +29,8 @@ import net.minecraft.world.level.LevelInfo;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL14;
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL20;
 
 import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -86,14 +80,16 @@ public final class ClientSmokeTest implements ClientModInitializer {
                 return;
             }
             require(!binding.wasPressed(), "Queued input outside a world must be consumed");
+            SmokeTestReport.record("startup-controls");
             testingWorld = true;
             verifyWorld(client);
             Path report = Paths.get(System.getProperty("lvb.smoke.report"));
             Files.createDirectories(report.getParent());
+            SmokeTestReport.write(report);
             Files.write(report, ("PASS: Java " + System.getProperty("java.version")
                     + "; startup and B control; hidden terrain type; barrier-only pixels and models"
-                    + "; adjacent-face culling; opaque occlusion; foreign GL state; replaced terrain renderer; zero toggle terrain invalidations"
-                    + "; block and chunk packets; unload/reload; world switch; resource reload; VBO on/off\n")
+                    + "; adjacent-face culling; opaque occlusion; foreign GL state and VAO; exception recovery; index thread ownership; mono/stereo pass counts; replaced terrain renderer; zero toggle terrain invalidations"
+                    + "; world overlay scene; block and chunk packets; unload/reload; world switch; resource reload; VBO on/off\n")
                     .getBytes(StandardCharsets.UTF_8));
             System.exit(0);
         } catch (Throwable failure) {
@@ -102,7 +98,7 @@ public final class ClientSmokeTest implements ClientModInitializer {
         }
     }
 
-    private void verifyWorld(MinecraftClient client) {
+    private void verifyWorld(MinecraftClient client) throws ReflectiveOperationException {
         openWorld(client);
         populate(client);
         // Initialize the real world lightmap and camera before checking the isolated pass.
@@ -114,37 +110,28 @@ public final class ClientSmokeTest implements ClientModInitializer {
             RenderSmokeTestProbe.watchTerrain = true;
             for (int i = 0; i < 3; i++) {
                 byte[] hidden = frame(client, 0, 0);
-                int[] hiddenState = glState();
+                int[] hiddenState = RenderStateSmokeTest.glState();
                 toggle(client);
                 byte[] visible = frame(client, 3, 64);
-                require(Arrays.equals(hiddenState, glState()), "Visibility changed OpenGL state");
-                int changed = 0;
-                for (int y = 0; y < HEIGHT; y++) {
-                    for (int x = 0; x < WIDTH; x++) {
-                        int offset = (y * WIDTH + x) * 4;
-                        boolean different = false;
-                        for (int channel = 0; channel < 3; channel++) {
-                            different |= hidden[offset + channel] != visible[offset + channel];
-                        }
-                        if (different) {
-                            require(x >= 40 && x < 72 && y >= 24 && y < 40,
-                                    "A toggle changed pixels outside the two exposed barriers: " + x + "," + y);
-                            changed++;
-                        }
-                    }
-                }
-                require(changed > 0, "Visible barriers did not draw any pixels");
+                require(Arrays.equals(hiddenState, RenderStateSmokeTest.glState()), "Visibility changed OpenGL state");
+                requireBarrierPixels(hidden, visible);
                 toggle(client);
                 require(Arrays.equals(hidden, frame(client, 0, 0)), "Hiding barriers changed the base scene");
             }
             require(RenderSmokeTestProbe.invalidations == 0, "Toggling invalidated terrain");
             RenderSmokeTestProbe.watchTerrain = false;
-            toggle(client);
-            verifyFrameHook(client);
-            toggle(client);
         }
         toggle(client);
-        verifyForeignState(client);
+        verifyFrameHook(client, true);
+        SmokeTestReport.record("barrier-pixels-vbo-on-off");
+        SmokeTestReport.record("zero-toggle-terrain-invalidations");
+        verifyTranslucentNeighbors(client);
+        verifyBatchRecovery(client);
+        SmokeTestReport.record("batch-failure-recovery");
+        IndexSmokeTest.verify(client);
+        SmokeTestReport.record("index-thread-ownership");
+        RenderStateSmokeTest.verify(client);
+        ModCompatibilitySmokeTest.verify(client, () -> toggle(client));
         client.world.setBlockState(SECOND, Blocks.AIR.getDefaultState(), 2);
         frame(client, 2, 48);
         client.world.setBlockState(SECOND, Blocks.BARRIER.getDefaultState(), 2);
@@ -182,12 +169,19 @@ public final class ClientSmokeTest implements ClientModInitializer {
         cache(client).unloadChunk(0, 0);
         populate(client);
         frame(client, 3, 64);
+        SmokeTestReport.record("block-chunk-lifecycle");
         client.reloadResources();
         require(LegacyFabricClient.barriersVisible(), "Resource reload reset visibility");
         frame(client, 3, 64);
+        ModCompatibilitySmokeTest.verify(client, () -> toggle(client));
+        SmokeTestReport.record("resource-reload");
         openWorld(client);
         require(LegacyFabricClient.barriersVisible(), "World switch reset visibility");
         frame(client, 0, 0);
+        verifyFrameHook(client, false);
+        populate(client);
+        ModCompatibilitySmokeTest.verify(client, () -> toggle(client));
+        SmokeTestReport.record("world-switch");
     }
 
     private void openWorld(MinecraftClient client) {
@@ -233,6 +227,10 @@ public final class ClientSmokeTest implements ClientModInitializer {
     }
 
     private static byte[] frame(MinecraftClient client, int expectedModels, int expectedVertices) {
+        return frame(client, expectedModels, expectedVertices, null);
+    }
+
+    private static byte[] frame(MinecraftClient client, int expectedModels, int expectedVertices, BlockPos glass) {
         GL11.glViewport(0, 0, WIDTH, HEIGHT);
         GL11.glMatrixMode(GL11.GL_PROJECTION);
         GL11.glLoadIdentity();
@@ -265,10 +263,19 @@ public final class ClientSmokeTest implements ClientModInitializer {
         GlStateManager.blendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
         GlStateManager.depthMask(false);
         GlStateManager.shadeModel(GL11.GL_SMOOTH);
+        if (glass != null) {
+            buffer.begin(GL11.GL_QUADS, VertexFormats.BLOCK);
+            buffer.offset(-client.player.x, -client.player.y, -client.player.z);
+            models.renderBlock(Blocks.STAINED_GLASS.getDefaultState(), glass, client.world, buffer);
+            terrain.draw();
+        }
         RenderSmokeTestProbe.resetModels();
         RenderSmokeTestProbe.watchModels = true;
-        BARRIERS.render(client, client.player, 1);
-        RenderSmokeTestProbe.watchModels = false;
+        try {
+            BARRIERS.render(client, client.player, 1);
+        } finally {
+            RenderSmokeTestProbe.watchModels = false;
+        }
         require(RenderSmokeTestProbe.otherBlocks == 0, "Barrier pass tessellated another block type");
         require(RenderSmokeTestProbe.barriers == expectedModels,
                 "Expected " + expectedModels + " barrier models, got " + RenderSmokeTestProbe.barriers);
@@ -282,113 +289,77 @@ public final class ClientSmokeTest implements ClientModInitializer {
         return result;
     }
 
-    private static void verifyFrameHook(MinecraftClient client) {
-        // A replacement renderer can cancel the vanilla method at HEAD.
+    private static void verifyFrameHook(MinecraftClient client, boolean hasBarriers) {
         client.player.yaw = client.player.prevYaw = 180;
         client.player.pitch = client.player.prevPitch = 20;
-        for (boolean replacement : new boolean[]{false, true}) {
-            RenderSmokeTestProbe.cancelTerrainLayer = replacement;
-            RenderSmokeTestProbe.resetModels();
-            RenderSmokeTestProbe.watchModels = true;
-            try {
+        boolean previousAnaglyph = client.options.anaglyph3d;
+        try {
+            // Exercise each hook behavior once; the pixel fixture covers both terrain backends.
+            for (int scenario = 0; scenario < (hasBarriers ? 3 : 1); scenario++) {
+                boolean stereo = scenario == 1;
+                client.options.anaglyph3d = stereo;
+                RenderSmokeTestProbe.cancelTerrainLayer = scenario == 2;
+                RenderSmokeTestProbe.resetModels();
+                RenderSmokeTestProbe.watchModels = true;
                 client.gameRenderer.renderWorld(1, System.nanoTime() + 100_000_000L);
-                require(RenderSmokeTestProbe.barriers > 0,
-                        "World frame bypassed barrier pass (replacement=" + replacement + ")");
-            } finally {
-                RenderSmokeTestProbe.watchModels = false;
-                RenderSmokeTestProbe.cancelTerrainLayer = false;
+                require(RenderSmokeTestProbe.cameraPasses == (stereo ? 2 : 1), "Incorrect camera pass count");
+                require(RenderSmokeTestProbe.eyeMask == (stereo ? 3 : 4), "Camera eye was skipped");
+                require(RenderSmokeTestProbe.barrierPasses == RenderSmokeTestProbe.cameraPasses,
+                        "Expected exactly one barrier pass per camera eye");
+                require((RenderSmokeTestProbe.barriers > 0) == hasBarriers, "Unexpected barrier submission");
+            }
+            SmokeTestReport.record(hasBarriers ? "camera-pass-counts" : "empty-camera-pass-counts");
+        } finally {
+            client.options.anaglyph3d = previousAnaglyph;
+            RenderSmokeTestProbe.watchModels = false;
+            RenderSmokeTestProbe.cancelTerrainLayer = false;
+        }
+    }
+
+    private void verifyTranslucentNeighbors(MinecraftClient client) {
+        for (int z : new int[]{-1, 1}) {
+            BlockPos glass = new BlockPos(0, 64, z);
+            client.world.setBlockState(glass, Blocks.STAINED_GLASS.getDefaultState(), 2);
+            toggle(client);
+            byte[] hidden = frame(client, 0, 0, glass);
+            toggle(client);
+            requireBarrierPixels(hidden, frame(client, 3, 64, glass));
+            toggle(client);
+            require(Arrays.equals(hidden, frame(client, 0, 0, glass)), "Toggle changed neighbouring glass");
+            toggle(client);
+            client.world.setBlockState(glass, Blocks.AIR.getDefaultState(), 2);
+        }
+        SmokeTestReport.record("translucent-neighbor-pixels");
+    }
+
+    private static void requireBarrierPixels(byte[] hidden, byte[] visible) {
+        int changed = 0;
+        for (int y = 0; y < HEIGHT; y++) {
+            for (int x = 0; x < WIDTH; x++) {
+                int offset = (y * WIDTH + x) * 4;
+                boolean different = false;
+                for (int channel = 0; channel < 3; channel++) {
+                    different |= hidden[offset + channel] != visible[offset + channel];
+                }
+                if (different) {
+                    require(x >= 40 && x < 72 && y >= 24 && y < 40,
+                            "A toggle changed pixels outside the two exposed barriers: " + x + "," + y);
+                    changed++;
+                }
             }
         }
+        require(changed > 0, "Visible barriers did not draw any pixels");
     }
 
-    private static void verifyForeignState(MinecraftClient client) {
-        // A world overlay may leave a lightmap, color and vertex array selected for its next draw.
-        int texture = GL11.glGenTextures();
-        int vbo = GL15.glGenBuffers();
-        GlStateManager.activeTexture(GL13.GL_TEXTURE1);
-        GlStateManager.enableTexture();
-        GlStateManager.bindTexture(texture);
-        GL11.glMatrixMode(GL11.GL_TEXTURE);
-        GL11.glPushMatrix();
-        GL11.glLoadIdentity();
-        GL11.glTranslatef(0.25F, 0.5F, 0.75F);
-        float[] matrix = floats(GL11.GL_TEXTURE_MATRIX);
-        GlStateManager.color(0.25F, 0.5F, 0.75F, 0.5F);
-        float[] color = floats(GL11.GL_CURRENT_COLOR);
-        GL13.glClientActiveTexture(GL13.GL_TEXTURE2);
-        GL11.glMatrixMode(GL11.GL_PROJECTION);
-        GlStateManager.activeTexture(GL13.GL_TEXTURE2);
-        int[] before = glState();
-        GL11.glPushClientAttrib(GL11.GL_CLIENT_VERTEX_ARRAY_BIT);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, 4096, GL15.GL_STATIC_DRAW);
-        GL11.glVertexPointer(3, GL11.GL_FLOAT, 16, 8L);
-        GL11.glEnableClientState(GL11.GL_VERTEX_ARRAY);
-        // OptiFine's shader uploader uses generic attribute 8 for mid-texture coordinates.
-        GL20.glVertexAttribPointer(8, 2, GL11.GL_FLOAT, false, 16, 8L);
-        GL20.glEnableVertexAttribArray(8);
-        int[] attribute = vertexAttribute(8);
-        try {
-            new BarrierRenderer().render(client, client.player, 1);
-            require(Arrays.equals(before, glState()), "Barrier pass changed foreign GL state");
-            require(GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING) == vbo, "Barrier pass lost VBO binding");
-            require(GL11.glIsEnabled(GL11.GL_VERTEX_ARRAY), "Barrier pass disabled foreign vertex array");
-            require(GL11.glGetInteger(GL11.GL_VERTEX_ARRAY_STRIDE) == 16, "Barrier pass replaced foreign vertex pointer");
-            require(GL11.glGetInteger(GL15.GL_VERTEX_ARRAY_BUFFER_BINDING) == vbo, "Barrier pass replaced vertex array buffer");
-            require(Arrays.equals(attribute, vertexAttribute(8)), "Barrier pass changed generic vertex attributes");
-            require(Arrays.equals(color, floats(GL11.GL_CURRENT_COLOR)), "Barrier pass changed current color");
-            GlStateManager.activeTexture(GL13.GL_TEXTURE1);
-            require(GL11.glIsEnabled(GL11.GL_TEXTURE_2D), "Barrier pass disabled foreign lightmap");
-            require(GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D) == texture, "Barrier pass replaced foreign lightmap");
-            require(Arrays.equals(matrix, floats(GL11.GL_TEXTURE_MATRIX)), "Barrier pass changed lightmap matrix");
-            // Check the cached color agrees with the restored OpenGL color.
-            GlStateManager.color(1, 1, 1, 1);
-            require(floats(GL11.GL_CURRENT_COLOR)[0] == 1, "GlStateManager color cache diverged");
-            require(GL11.glGetError() == GL11.GL_NO_ERROR, "OpenGL error with foreign vertex state");
-        } finally {
-            GL11.glPopClientAttrib();
-            GlStateManager.activeTexture(GL13.GL_TEXTURE1);
-            GL11.glMatrixMode(GL11.GL_TEXTURE);
-            GL11.glPopMatrix();
-            GlStateManager.bindTexture(0);
-            GlStateManager.disableTexture();
-            GlStateManager.activeTexture(GL13.GL_TEXTURE0);
-            GL13.glClientActiveTexture(GL13.GL_TEXTURE0);
-            GL11.glMatrixMode(GL11.GL_MODELVIEW);
-            GlStateManager.color(1, 1, 1, 1);
-            GL15.glDeleteBuffers(vbo);
-            GL11.glDeleteTextures(texture);
-        }
-    }
-
-    private static float[] floats(int name) {
-        FloatBuffer values = BufferUtils.createFloatBuffer(16);
-        GL11.glGetFloat(name, values);
-        float[] result = new float[16];
-        values.get(result);
-        return result;
-    }
-
-    private static int[] vertexAttribute(int index) {
-        int[] properties = {GL20.GL_VERTEX_ATTRIB_ARRAY_ENABLED, GL20.GL_VERTEX_ATTRIB_ARRAY_SIZE,
-                GL20.GL_VERTEX_ATTRIB_ARRAY_TYPE, GL20.GL_VERTEX_ATTRIB_ARRAY_STRIDE,
-                GL20.GL_VERTEX_ATTRIB_ARRAY_NORMALIZED, GL15.GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING};
-        int[] result = new int[properties.length];
-        IntBuffer value = BufferUtils.createIntBuffer(4);
-        for (int i = 0; i < properties.length; i++) {
-            GL20.glGetVertexAttrib(index, properties[i], value);
-            result[i] = value.get(0);
-        }
-        return result;
-    }
-
-    private static int[] glState() {
-        return new int[]{GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM), GL11.glGetInteger(GL11.GL_DEPTH_FUNC), GL11.glGetInteger(GL11.GL_DEPTH_WRITEMASK),
-                GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB), GL11.glGetInteger(GL14.GL_BLEND_DST_RGB),
-                GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D), GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE),
-                GL11.glGetInteger(GL13.GL_CLIENT_ACTIVE_TEXTURE), GL11.glGetInteger(GL11.GL_MATRIX_MODE),
-                GL11.glIsEnabled(GL11.GL_BLEND) ? 1 : 0, GL11.glIsEnabled(GL11.GL_CULL_FACE) ? 1 : 0,
-                GL11.glIsEnabled(GL11.GL_DEPTH_TEST) ? 1 : 0, GL11.glIsEnabled(GL11.GL_ALPHA_TEST) ? 1 : 0};
+    private static void verifyBatchRecovery(MinecraftClient client) {
+        RenderSmokeTestProbe.modelAction = () -> { throw new RenderSmokeTestProbe.InjectedFailure(); };
+        RenderSmokeTestProbe.expectFailure(() -> frame(client, 3, 64), RenderSmokeTestProbe.InjectedFailure.class);
+        require(RenderSmokeTestProbe.modelAction == null, "Model failure was not exercised");
+        frame(client, 3, 64);
+        RenderSmokeTestProbe.modelAction = () -> BARRIERS.render(client, client.player, 1);
+        RenderSmokeTestProbe.expectFailure(() -> frame(client, 3, 64), IllegalStateException.class);
+        require(RenderSmokeTestProbe.modelAction == null, "Reentrant batch was not exercised");
+        frame(client, 3, 64);
     }
 
     private static void require(boolean condition, String message) {

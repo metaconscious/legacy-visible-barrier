@@ -34,5 +34,11 @@ public class BlockModelRendererSmokeTestMixin {
         if (Thread.currentThread() == RenderSmokeTestProbe.OWNER && RenderSmokeTestProbe.watchModels) {
             RenderSmokeTestProbe.vertices += buffer.getVertexCount() - RenderSmokeTestProbe.firstVertex;
         }
+        if (Thread.currentThread() == RenderSmokeTestProbe.OWNER && state.getBlock() == Blocks.BARRIER
+                && RenderSmokeTestProbe.modelAction != null) {
+            Runnable action = RenderSmokeTestProbe.modelAction;
+            RenderSmokeTestProbe.modelAction = null;
+            action.run();
+        }
     }
 }

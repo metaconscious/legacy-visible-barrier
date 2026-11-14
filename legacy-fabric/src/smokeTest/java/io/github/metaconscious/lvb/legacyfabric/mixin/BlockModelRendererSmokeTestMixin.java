@@ -12,6 +12,10 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL11;
+
+import java.nio.FloatBuffer;
 
 @Mixin(BlockModelRenderer.class)
 public class BlockModelRendererSmokeTestMixin {
@@ -21,6 +25,11 @@ public class BlockModelRendererSmokeTestMixin {
         if (Thread.currentThread() == RenderSmokeTestProbe.OWNER && RenderSmokeTestProbe.watchModels) {
             if (state.getBlock() == Blocks.BARRIER) {
                 RenderSmokeTestProbe.barriers++;
+                if (Boolean.getBoolean("lvb.smoke.orthographic")) {
+                    FloatBuffer projection = BufferUtils.createFloatBuffer(16);
+                    GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX, projection);
+                    RenderSmokeTestProbe.barrierProjectionW = projection.get(15);
+                }
             } else {
                 RenderSmokeTestProbe.otherBlocks++;
             }
@@ -33,6 +42,12 @@ public class BlockModelRendererSmokeTestMixin {
                         BufferBuilder buffer, boolean cull, CallbackInfoReturnable<Boolean> result) {
         if (Thread.currentThread() == RenderSmokeTestProbe.OWNER && RenderSmokeTestProbe.watchModels) {
             RenderSmokeTestProbe.vertices += buffer.getVertexCount() - RenderSmokeTestProbe.firstVertex;
+        }
+        if (Thread.currentThread() == RenderSmokeTestProbe.OWNER && state.getBlock() == Blocks.BARRIER
+                && RenderSmokeTestProbe.modelAction != null) {
+            Runnable action = RenderSmokeTestProbe.modelAction;
+            RenderSmokeTestProbe.modelAction = null;
+            action.run();
         }
     }
 }

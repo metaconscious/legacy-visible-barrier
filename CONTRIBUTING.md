@@ -39,7 +39,7 @@ Useful tasks:
 | Command | Purpose |
 | --- | --- |
 | `./gradlew :core:test` | Domain and lifecycle tests on Java 8 |
-| `./gradlew testReleaseTools` | SemVer and publisher tests without network publication |
+| `./gradlew testReleaseTools` | Release, artifact and compatibility-runner script tests |
 | `./gradlew verifyArtifacts` | Build and inspect both remapped JARs |
 | `./gradlew smokeTest` | Verify both Java 8 clients, controls, rendering, and chunk lifecycle |
 | `./gradlew :legacy-fabric:runClient` | Legacy Fabric development client |
@@ -65,18 +65,54 @@ Validate workflow changes with `actionlint`.
 `smokeTest` requires a display. On headless Linux, install Xvfb, `xrandr`, and Mesa OpenGL
 drivers, then run `LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a ./gradlew smokeTest`.
 It uses fresh directories under each adapter's `build`,
-exits automatically, and writes `build/reports/smoke-test.txt` in each adapter. CI runs
+exits automatically, and writes `build/reports/smoke-test.txt` and `client.json` in each adapter. CI runs
 these checks before staging. Test mod classes and resources are excluded from distributions.
 
-The automated client test creates an isolated world and exercises the real renderer.
-It compares framebuffer pixels before and after toggles, counts barrier models and
-vertices, checks opaque occlusion and frustum culling, and rejects terrain invalidation
-or non-barrier tessellation during the barrier pass. It also covers chunk boundary faces,
-block changes, full and partial chunk packets, unloads, world switches, resource reloads,
-VBO/display-list rendering, a replacement terrain-layer method, and restoration of
-foreign OpenGL state. The frame-hook fixture runs with both native and cancelled
-terrain draws. Published rendering-mod checks and their scope are listed in
-[compatibility.md](docs/compatibility.md).
+Client tests compare barrier pixels, count geometry and terrain invalidations, exercise
+chunk/world/resource updates, and verify OpenGL state restoration and failure recovery.
+Both terrain backends and mono/anaglyph camera passes are covered. Optional mod fixtures
+check active overlays across toggles and reloads. See [compatibility.md](docs/compatibility.md)
+for the tested combinations.
+
+### Production mod compatibility tests
+
+Use remapped production JARs for third-party mods, including OptiFabric, which replaces
+game classes in the production namespace. Prepare the matching adapter, then supply
+published mod JARs and their dependencies to the isolated runner:
+
+```sh
+./gradlew :legacy-fabric:prepareModCompatibility :ornithe:prepareModCompatibility
+python3 tools/test_mod_compatibility.py legacy-fabric \
+  --profile build/mod-tests/chunk-borders \
+  --mod /path/to/legacy-chunk-borders-1.0.0+1.8.2-1.8.9.jar \
+  --property lvb.smoke.chunkBorders=true
+```
+
+Each `--profile` must be a new directory. Repeat `--mod` for additional JARs; the
+runner supplies LVB, its test mod and the adapter's baseline APIs. Add optional OSL
+modules when another mod requires them. `--config` copies a directory of mod settings
+into the profile, and `--java` selects a different Java executable for mods requiring
+a newer runtime. Use `--options /path/to/optionsof.txt` and repeat it for `options.txt`
+or `optionsshaders.txt` to seed Minecraft/OptiFine settings. The runner uses the same
+display requirements as `smokeTest`. Reports contain logs, artifact/configuration hashes,
+runtime versions and completed checks. Profiles under `build/` are ignored by Git.
+Re-run the Gradle preparation after changing source code or dependencies.
+
+Optional assertions exercise these pinned builds; a missing mod or inactive feature
+fails the corresponding check:
+
+| Property | Feature and fixture |
+| --- | --- |
+| `lvb.smoke.chunkBorders=true` | Enables Legacy Chunk Borders 1.0.0 and requires grid drawing. |
+| `lvb.smoke.expectHitboxes=true` | Requires Legacy Hitbox 1.0.0 to draw the fixture player. Enable it in `legacyhitbox.json`. |
+| `lvb.smoke.expectHighlights=true` | Requires Legacy Block Highlight 1.0.0 to draw the selected barrier. Enable it in `legacyblockhighlight.json`. |
+| `lvb.smoke.orthographic=true` | Requires orthographic projection. Enable Legacy OrthoCamera 1.0.1 in `orthocamera.json` with `save_enabled_state=true`, `auto_third_person=false` and `fixed=false`; retain its scale and clipping-distance defaults. |
+| `lvb.smoke.axolotlOutlines=true` | Enables AxolotlClient 3.0.6 (Legacy Fabric) or 3.1.8 (Ornithe) custom outlines and verifies the resulting line width. |
+| `lvb.smoke.villages=true` | Supplies a village to Kabo Village Marker 1.3.0 and requires drawing. |
+| `lvb.smoke.waypoints=true` | Supplies an in-view world label to AxolotlClient Waypoints 0.0.3 and requires drawing. |
+| `lvb.smoke.miningProgress=true` | Adds active block-mining progress in Ornithe to exercise mods hooked into that rendering stage. |
+
+Third-party JARs are supplied locally and excluded from CI and release artifacts.
 
 For dependency updates, preserve the intermediary generation and update explicit module
 coordinates together. OSL module versions are pinned from the OSL 0.16.3 distribution.

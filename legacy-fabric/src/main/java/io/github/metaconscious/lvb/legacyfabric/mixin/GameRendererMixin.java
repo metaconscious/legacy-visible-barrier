@@ -18,7 +18,7 @@ public class GameRendererMixin {
     @Inject(method = "renderWorld(IFJ)V",
             slice = @Slice(from = @At(value = "FIELD", target = "Lnet/minecraft/client/render/RenderLayer;TRANSLUCENT:Lnet/minecraft/client/render/RenderLayer;")),
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/render/WorldRenderer;renderLayer(Lnet/minecraft/client/render/RenderLayer;DILnet/minecraft/entity/Entity;)I",
-                    ordinal = 0, shift = At.Shift.AFTER))
+                    ordinal = 0, shift = At.Shift.AFTER), require = 1, allow = 1)
     private void lvb$renderBarriers(int pass, float tickDelta, long limitTime, CallbackInfo ci) {
         MinecraftClient client = MinecraftClient.getInstance();
         lvb$barriers.render(client, client.getCameraEntity(), tickDelta);

@@ -9,9 +9,16 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.lwjgl.opengl.GL11;
 
 @Mixin(WorldRenderer.class)
 public class WorldRendererSmokeTestMixin {
+    @Inject(method = "drawBlockOutline", at = @At(value = "INVOKE",
+            target = "Lorg/lwjgl/opengl/GL11;glLineWidth(F)V", remap = false, shift = At.Shift.AFTER))
+    private void lvb$outlineDrawn(CallbackInfo ci) {
+        RenderSmokeTestProbe.outlineWidth = GL11.glGetFloat(GL11.GL_LINE_WIDTH);
+    }
+
     @Inject(method = "renderLayer(Lnet/minecraft/client/render/RenderLayer;DILnet/minecraft/entity/Entity;)I",
             at = @At("HEAD"), cancellable = true)
     private void lvb$replacementRenderer(RenderLayer layer, double delta, int pass, Entity camera,
