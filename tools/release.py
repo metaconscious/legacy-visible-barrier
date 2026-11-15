@@ -1,19 +1,14 @@
-"""Stage verified distributions, or publish them through Modrinth and GitHub CLI."""
+"""Stage verified distributions, or publish them through GitHub CLI."""
 
 import argparse
 import hashlib
 import json
-import os
 import shutil
 import subprocess
 import tempfile
-import urllib.error
-import urllib.request
-import uuid
 from pathlib import Path
 
-from versions import (GAME_VERSION, PROJECT_ID, TARGETS, artifact_version, changelog_entry,
-                      release_channel, validate_tag)
+from versions import TARGETS, artifact_version, changelog_entry, parse_version, validate_tag
 
 ROOT = Path(__file__).resolve().parent.parent
 REPOSITORY = "metaconscious/legacy-visible-barrier"
@@ -33,54 +28,40 @@ def stage(base, report_path, jars, output, tag=None):
     changelog = changelog_entry(ROOT / "CHANGELOG.md", base)
     reports = {r["target"]: r for r in json.loads(report_path.read_text(encoding="utf-8"))}
     if set(reports) != set(TARGETS) or set(jars) != set(TARGETS):
-        raise ValueError("Both distributions must pass artifact verification")
+        raise ValueError("All distributions must pass artifact verification")
     output.mkdir(parents=True, exist_ok=True)
-    versions = []
-    for target, info in TARGETS.items():
+    artifacts = []
+    for target in TARGETS:
         jar, report = jars[target], reports[target]
         version = artifact_version(base, target)
         if report["version"] != version or jar.name != report["filename"] or digest(jar) != report["sha512"]:
             raise ValueError(f"Artifact changed after verification: {target}")
         shutil.copyfile(jar, output / jar.name)
-        versions.append({
-            "target": target, "filename": jar.name, "sha512": report["sha512"], "size": report["size"],
-            "metadata": {
-                "project_id": PROJECT_ID, "name": f"{base} — {info['name']}", "version_number": version,
-                "version_type": release_channel(base), "game_versions": [GAME_VERSION], "loaders": [target],
-                "changelog": changelog, "featured": False,
-                "dependencies": [{"project_id": info["dependency"], "dependency_type": "required"}],
-            },
+        artifacts.append({
+            "target": target, "version": version, "filename": jar.name,
+            "sha512": report["sha512"], "size": report["size"],
         })
-    manifest = {"schema": 1, "repository": REPOSITORY, "version": base, "tag": f"v{base}",
-                "commit": commit, "changelog": changelog, "versions": versions}
+    manifest = {"schema": 2, "repository": REPOSITORY, "version": base, "tag": f"v{base}",
+                "commit": commit, "changelog": changelog, "artifacts": artifacts}
     (output / "release.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     (output / "SHA512SUMS").write_text(
-        "".join(f"{v['sha512']}  {v['filename']}\n" for v in versions), encoding="utf-8")
+        "".join(f"{v['sha512']}  {v['filename']}\n" for v in artifacts), encoding="utf-8")
     print(f"Staged {base} from {commit} in {output}")
 
 
 def load_manifest(path):
     manifest = json.loads(path.read_text(encoding="utf-8"))
     validate_tag(manifest["tag"], manifest["version"])
-    if manifest["schema"] != 1 or manifest["repository"] != REPOSITORY:
+    if manifest["schema"] != 2 or manifest["repository"] != REPOSITORY:
         raise ValueError("Unexpected release manifest")
-    records = manifest["versions"]
-    if len(records) != 2 or {v["target"] for v in records} != set(TARGETS):
+    records = manifest["artifacts"]
+    if len(records) != len(TARGETS) or {v["target"] for v in records} != set(TARGETS):
         raise ValueError("A release must contain exactly one artifact per target")
     for record in records:
-        target, metadata = record["target"], record["metadata"]
+        target = record["target"]
         version = artifact_version(manifest["version"], target)
-        if record["filename"] != f"legacy-visible-barrier-{version}.jar":
-            raise ValueError("Unexpected distribution filename")
-        expected = {
-            "project_id": PROJECT_ID, "name": f"{manifest['version']} — {TARGETS[target]['name']}",
-            "version_number": version, "version_type": release_channel(manifest["version"]),
-            "game_versions": [GAME_VERSION], "loaders": [target], "changelog": manifest["changelog"],
-            "featured": False,
-            "dependencies": [{"project_id": TARGETS[target]["dependency"], "dependency_type": "required"}],
-        }
-        if metadata != expected:
-            raise ValueError(f"Unexpected release metadata: {target}")
+        if record["version"] != version or record["filename"] != f"legacy-visible-barrier-{version}.jar":
+            raise ValueError(f"Unexpected distribution version or filename: {target}")
         jar = path.parent / record["filename"]
         if digest(jar) != record["sha512"] or jar.stat().st_size != record["size"]:
             raise ValueError(f"Artifact checksum mismatch: {target}")
@@ -90,92 +71,11 @@ def load_manifest(path):
     return manifest
 
 
-class Modrinth:
-    def __init__(self, token):
-        if not token:
-            raise ValueError("MODRINTH_TOKEN is required")
-        self.token = token
-
-    def request(self, path, data=None, content_type=None):
-        headers = {"Authorization": self.token, "User-Agent": f"{REPOSITORY}/release"}
-        if content_type:
-            headers["Content-Type"] = content_type
-        request = urllib.request.Request("https://api.modrinth.com/v2/" + path, data=data, headers=headers)
-        with urllib.request.urlopen(request, timeout=60) as response:
-            return json.load(response)
-
-    def versions(self):
-        return self.request(f"project/{PROJECT_ID}/version")
-
-    def get(self, version_id):
-        return self.request(f"version/{version_id}")
-
-    def create(self, record, directory):
-        boundary = "lvb-" + uuid.uuid4().hex
-        metadata = dict(record["metadata"], file_parts=["file"], primary_file="file")
-        data = (
-            f'--{boundary}\r\nContent-Disposition: form-data; name="data"\r\n'
-            'Content-Type: application/json\r\n\r\n' + json.dumps(metadata) + '\r\n'
-            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{record["filename"]}"\r\n'
-            'Content-Type: application/java-archive\r\n\r\n'
-        ).encode("utf-8")
-        data += (directory / record["filename"]).read_bytes() + f"\r\n--{boundary}--\r\n".encode("ascii")
-        return self.request("version", data, f"multipart/form-data; boundary={boundary}")
-
-
-def check_existing(record, existing):
-    metadata = record["metadata"]
-    for key in ("project_id", "name", "version_number", "version_type", "game_versions", "loaders", "changelog"):
-        if existing.get(key) != metadata[key]:
-            raise ValueError(f"Published metadata differs for {metadata['version_number']}: {key}")
-    dependencies = [(d.get("project_id"), d.get("version_id"), d.get("file_name"), d["dependency_type"])
-                    for d in existing.get("dependencies", [])]
-    expected = [(metadata["dependencies"][0]["project_id"], None, None, "required")]
-    files = existing.get("files", [])
-    if dependencies != expected or len(files) != 1:
-        raise ValueError(f"Published files or dependencies differ for {metadata['version_number']}")
-    file = files[0]
-    if (file["filename"] != record["filename"] or file["hashes"]["sha512"] != record["sha512"]
-            or file["size"] != record["size"] or not file["primary"]):
-        raise ValueError(f"Published artifact differs for {metadata['version_number']}")
-    return existing["id"]
-
-
 def check_github_release(manifest, release):
     if (release["tag_name"] != manifest["tag"] or release["name"] != manifest["version"]
             or release["body"] != manifest["changelog"]
-            or release["prerelease"] != (release_channel(manifest["version"]) != "release")):
+            or release["prerelease"] != bool(parse_version(manifest["version"])["prerelease"])):
         raise ValueError("Existing GitHub release metadata differs")
-
-
-def preflight(records, versions):
-    completed = {}
-    for record in records:
-        matches = [v for v in versions if v["version_number"] == record["metadata"]["version_number"]]
-        if len(matches) > 1:
-            raise ValueError(f"Duplicate published version: {record['metadata']['version_number']}")
-        if matches:
-            completed[record["target"]] = check_existing(record, matches[0])
-    return completed
-
-
-def publish_modrinth(client, records, directory, completed):
-    result = dict(completed)
-    for record in records:
-        target = record["target"]
-        if target in result:
-            continue
-        try:
-            created = client.create(record, directory)
-        except (OSError, urllib.error.URLError):
-            # A timeout can occur after the server commits the upload. Reconcile before retrying.
-            reconciled = preflight(records, client.versions())
-            if target not in reconciled:
-                raise
-            result.update(reconciled)
-        else:
-            result[target] = check_existing(record, client.get(created["id"]))
-    return result
 
 
 def gh(*args):
@@ -196,13 +96,11 @@ def find_github_release(tag):
 def publish(manifest_path):
     manifest = load_manifest(manifest_path)
     directory, tag = manifest_path.parent, manifest["tag"]
-    client = Modrinth(os.environ.get("MODRINTH_TOKEN"))
-    completed = preflight(manifest["versions"], client.versions())
     commit = json.loads(gh("api", f"repos/{REPOSITORY}/commits/{tag}"))["sha"]
     if commit != manifest["commit"]:
         raise ValueError("Release tag no longer matches the built commit")
     release = find_github_release(tag)
-    assets = [v["filename"] for v in manifest["versions"]] + ["release.json", "SHA512SUMS"]
+    assets = [v["filename"] for v in manifest["artifacts"]] + ["release.json", "SHA512SUMS"]
     present = set()
     with tempfile.TemporaryDirectory(prefix="lvb-release-") as tmp:
         notes = Path(tmp) / "notes.md"
@@ -221,17 +119,15 @@ def publish(manifest_path):
         else:
             args = ["release", "create", tag, "--repo", REPOSITORY, "--verify-tag", "--draft",
                     "--title", manifest["version"], "--notes-file", str(notes)]
-            if release_channel(manifest["version"]) != "release":
+            if parse_version(manifest["version"])["prerelease"]:
                 args.append("--prerelease")
             gh(*args)
         for asset in assets:
             if asset not in present:
                 gh("release", "upload", tag, str(directory / asset), "--repo", REPOSITORY)
-        published = publish_modrinth(client, manifest["versions"], directory, completed)
-        preflight(manifest["versions"], [client.get(version_id) for version_id in published.values()])
         if not release or release["draft"]:
             gh("release", "edit", tag, "--repo", REPOSITORY, "--draft=false")
-    print(json.dumps({"tag": tag, "modrinth_versions": published}, sort_keys=True))
+    print(f"Published GitHub release {tag}")
 
 
 def main():

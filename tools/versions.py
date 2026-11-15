@@ -10,10 +10,9 @@ SEMVER = re.compile(
     r"(?:\+(?P<build>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
 )
 TARGETS = {
-    "legacy-fabric": {"name": "Legacy Fabric", "dependency": "9CJED7xi"},
-    "ornithe": {"name": "Ornithe", "dependency": "EHGtwpJv"},
+    "legacy-fabric": {"name": "Legacy Fabric"},
+    "ornithe": {"name": "Ornithe"},
 }
-PROJECT_ID = "FSLuAotK"
 GAME_VERSION = "1.8.9"
 
 
@@ -29,13 +28,6 @@ def artifact_version(base, target):
     if parsed["build"] or target not in TARGETS:
         raise ValueError("The release version must have no build metadata and the target must be supported")
     return f"{base}+{target}"
-
-
-def release_channel(base):
-    prerelease = parse_version(base)["prerelease"]
-    if not prerelease:
-        return "release"
-    return "alpha" if prerelease.split(".")[0] == "alpha" else "beta"
 
 
 def validate_tag(tag, base):

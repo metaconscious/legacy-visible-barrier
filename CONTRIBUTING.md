@@ -58,7 +58,7 @@ translations belong in `shared-resources`. See [architecture](docs/architecture.
 and the [public compatibility contract](docs/compatibility.md).
 
 Test observable behavior through the controller and `ClientEffects` boundary. Release
-tests use a fake Modrinth service and temporary files. Extend artifact checks when
+tests use a fake GitHub CLI and temporary files. Extend artifact checks when
 changing metadata or packaging. Run `./gradlew clean build` before submitting changes.
 Validate workflow changes with `actionlint`.
 

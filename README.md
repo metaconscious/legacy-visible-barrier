@@ -7,7 +7,6 @@ message confirms each toggle.
 ## Installation
 
 Download the artifact matching your platform from
-[Modrinth](https://modrinth.com/mod/legacy-visible-barrier) or
 [GitHub Releases](https://github.com/metaconscious/legacy-visible-barrier/releases),
 and put it in the instance's `mods` directory with its required API.
 

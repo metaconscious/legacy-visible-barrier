@@ -46,7 +46,7 @@ Releases follow [Semantic Versioning 2.0.0](https://semver.org/):
 
 `mod_version` is the single release version, such as `1.2.0`. Artifact versions add build
 metadata: `1.2.0+legacy-fabric` and `1.2.0+ornithe`. These have equal SemVer precedence.
-The full artifact version is identical in the filename, mod metadata, and Modrinth record.
+The full artifact version is identical in the filename, mod metadata, and release manifest.
 The Git tag is `v1.2.0`. A prerelease uses, for example, `1.3.0-rc.1+ornithe`.
 
 Build metadata identifies the platform; it is not a substitute for a version increment
