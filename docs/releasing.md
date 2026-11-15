@@ -41,7 +41,8 @@ access. Use GitHub CLI for repository administration and release operations.
    release_commit=$(git rev-parse HEAD)
    gh api --method POST repos/metaconscious/legacy-visible-barrier/git/refs \
      -f ref="refs/tags/$release_tag" -f sha="$release_commit"
-   gh workflow run release.yml --repo metaconscious/legacy-visible-barrier -f tag="$release_tag"
+   gh workflow run release.yml --repo metaconscious/legacy-visible-barrier \
+     --ref "$release_tag" -f tag="$release_tag"
    ```
 
 The workflow also accepts pushed `v*` tags. It requires exact tag/version equality and
@@ -59,7 +60,7 @@ missing files, then publishes the completed release.
 If an upload fails, inspect the failed job and retry it with
 `gh run rerun RUN_ID --failed --repo metaconscious/legacy-visible-barrier`.
 If retained workflow artifacts have expired, dispatch `release.yml` again with the same
-existing tag. Identical assets are reused; only absent files are uploaded. Conflicting
+existing tag as both `--ref` and the `tag` input. Identical assets are reused; only absent files are uploaded. Conflicting
 hashes, metadata, or duplicate releases fail publication.
 
 Per-tag concurrency prevents simultaneous publication by this workflow. Publishing runs
