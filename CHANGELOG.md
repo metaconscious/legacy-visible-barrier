@@ -3,7 +3,7 @@
 Versions follow [Semantic Versioning 2.0.0](https://semver.org/). The public compatibility
 surface is defined in [docs/compatibility.md](docs/compatibility.md).
 
-## [1.5.0] - Unreleased
+## [1.5.0] - 2026-11-15
 
 - Add a Forge 1.8.9 distribution with enhanced rendering, native recovery and the built-in Mods configuration screen.
 - Support Quilt Loader 0.30.2 with the existing Ornithe Gen1 and Gen2 artifacts.
