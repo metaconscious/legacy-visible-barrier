@@ -3,7 +3,7 @@
 Versions follow [Semantic Versioning 2.0.0](https://semver.org/). The public compatibility
 surface is defined in [docs/compatibility.md](docs/compatibility.md).
 
-## [1.3.0] - Unreleased
+## [1.3.0] - 2026-11-15
 
 - Add an Ornithe Calamus Gen2 distribution alongside both existing Gen1 distributions.
 - Reject mismatched mapping generations before activating Minecraft rendering hooks.
@@ -11,7 +11,6 @@ surface is defined in [docs/compatibility.md](docs/compatibility.md).
   verify all three production distributions and cross-generation rejection in CI.
 - Import both Ornithe generations in IntelliJ IDEA with separate source roots,
   mappings, dependencies and client run configurations; build all targets in one invocation.
-- Remove automated Modrinth publishing; publish all three distributions to GitHub Releases.
 - Update the build to Gradle 9.2.1, Loom 1.15.5, Legacy Looming 1.15.3 and Ploceus 1.15.9;
   retain Java 8 mod bytecode and runtime support.
 - Eliminate toggle-triggered terrain reloads and screen flicker in enhanced mode.
@@ -34,16 +33,16 @@ surface is defined in [docs/compatibility.md](docs/compatibility.md).
   chunk grids, orthographic cameras, village markers, custom outlines and waypoint labels.
 - Add client regression checks for rendering isolation, state restoration and lifecycle updates.
 
-## [1.2.0] - Unreleased
+## [1.2.0] - 2026-11-15
 
 - Build Legacy Fabric and Ornithe artifacts from one four-project Gradle build.
 - Provision Java toolchains for Gradle and IntelliJ IDEA builds.
 - Share dependency-free visibility logic, translations, and barrier assets.
-- Enforce client-thread mutation and publish visibility safely to readers.
+- Enforce client-thread mutation and publish visibility safely to rendering workers.
 - Ignore queued toggles outside a world while retaining visibility across connections.
 - Declare client-only initialization and explicit runtime dependencies for both artifacts.
 - Verify core behavior, release contracts, Java 8 bytecode, metadata, and packaged resources.
-- Publish platform-specific SemVer build identifiers through a shared release pipeline.
+- Publish platform-specific SemVer build identifiers through a shared GitHub release pipeline.
 
 ## [1.1.0]
 
@@ -59,6 +58,8 @@ surface is defined in [docs/compatibility.md](docs/compatibility.md).
 - Toggle barrier block visibility with a rebindable `B` key.
 - Provide translated controls and visibility feedback.
 
+[1.3.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.3.0
+[1.2.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.2.0
 [1.1.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.1.0
 [1.0.1]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.0.1
 [1.0.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.0.0
