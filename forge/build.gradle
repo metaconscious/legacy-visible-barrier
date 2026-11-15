@@ -177,6 +177,8 @@ def developmentMod = tasks.register('prepareDevelopmentMod', Sync) {
 ['runClient', 'runSmokeTest'].each { name ->
     tasks.named(name, JavaExec) {
         dependsOn developmentMod
+        // Supply DISPLAY externally so JavaExec retains the Java 8 classpath.
+        useXvfb.set(false)
         def originalClasspath = files(new ArrayList(classpath.from))
         classpath = originalClasspath.minus(sourceSets.main.output).plus(files(developmentMod))
     }
