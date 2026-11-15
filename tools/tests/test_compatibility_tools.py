@@ -82,6 +82,15 @@ class CompatibilityTests(unittest.TestCase):
         command = process.call_args.args[0]
         self.assertEqual([str(library), str(self.minecraft)], command[command.index("-cp") + 1].split(os.pathsep))
 
+    def test_replacement_api_can_reuse_one_baseline_module(self):
+        # A newer API profile may retain an unchanged baseline JAR alongside new modules.
+        extra = self.root / "api-extra.jar"
+        with zipfile.ZipFile(extra, "w") as archive:
+            archive.writestr("fabric.mod.json", '{"id":"api-extra","version":"1.0.0"}')
+        code, result = self.launch(api=[self.mod, extra])
+        self.assertEqual(0, code)
+        self.assertEqual(["fixture", "api-extra"], [mod["id"] for mod in result["mods"]])
+
     def test_wrong_generation_exits_without_an_error_dialog(self):
         runtime = self.root / "other-generation.json"
         data = json.loads(self.manifest.read_text())

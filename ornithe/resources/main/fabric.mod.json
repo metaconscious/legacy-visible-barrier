@@ -9,7 +9,7 @@
     "DaveyL2013"
   ],
   "contact": {
-    "homepage": "https://modrinth.com/mod/legacy-visible-barrier",
+    "homepage": "https://github.com/metaconscious/legacy-visible-barrier#readme",
     "sources": "https://github.com/metaconscious/legacy-visible-barrier",
     "issues": "https://github.com/metaconscious/legacy-visible-barrier/issues"
   },
@@ -17,6 +17,7 @@
   "icon": "assets/lvb/icon.png",
   "environment": "client",
   "entrypoints": {
+    "modmenu": ["io.github.metaconscious.lvb.ornithe.ModMenuIntegration"],
     "client": [
       "io.github.metaconscious.lvb.ornithe.OrnitheClient"
     ]
@@ -34,6 +35,7 @@
     "osl-lifecycle-events": "${apiMinimums['osl-lifecycle-events']}",
     "osl-resource-loader": "${apiMinimums['osl-resource-loader']}"
   },
+  "suggests": {"modmenu": ">=${modMenuMinimum}"},
   "custom": {"lvb:target": {
     "id": "${targetId}",
     "name": "${targetName}",

@@ -15,18 +15,19 @@ FEATURES = {
     "legacy-fabric": {"chunkBorders", "expectHitboxes", "expectHighlights", "orthographic", "axolotlOutlines"},
     "ornithe": {"villages", "waypoints", "axolotlOutlines", "miningProgress"},
 }
-BASE_ASSERTIONS = {
-    "startup-controls", "mode:enhanced", "runtime-native-handover", "shared-failure-unavailable",
+COMMON_ASSERTIONS = {"startup-controls", "settings-ui", "settings-runtime-isolation"}
+BASE_ASSERTIONS = COMMON_ASSERTIONS | {
+    "mode:enhanced", "runtime-native-handover", "shared-failure-unavailable",
     "barrier-pixels-vbo-on-off", "zero-toggle-terrain-invalidations",
     "batch-failure-recovery", "index-thread-ownership", "foreign-gl-state-and-failure",
     "camera-pass-counts", "empty-camera-pass-counts", "block-chunk-lifecycle",
     "resource-reload", "world-switch", "translucent-neighbor-pixels", "shared-terrain-submission",
 }
-NATIVE_ASSERTIONS = {
-    "startup-controls", "mode:native", "native-startup-isolation", "native-toggles-vbo-on-off",
+NATIVE_ASSERTIONS = COMMON_ASSERTIONS | {
+    "mode:native", "native-startup-isolation", "native-toggles-vbo-on-off",
     "resource-reload", "world-switch", "native-translucent-scene",
 }
-OFF_ASSERTIONS = {"startup-controls", "mode:off", "native-startup-isolation", "off-controls"}
+OFF_ASSERTIONS = COMMON_ASSERTIONS | {"mode:off", "native-startup-isolation", "off-controls"}
 OPTION_FILES = {"options.txt", "optionsof.txt", "optionsshaders.txt"}
 
 
@@ -57,6 +58,8 @@ def validate_client(result):
     required = (OFF_ASSERTIONS if mode == "off" else NATIVE_ASSERTIONS if mode == "native" else BASE_ASSERTIONS)
     if result.get("missing_hook"):
         required = NATIVE_ASSERTIONS - {"native-startup-isolation"} | {"missing-hook-recovery"}
+    if any(mod.get("id") == "modmenu" for mod in result.get("mods", [])):
+        required = required | {"modmenu-screen"}
     required = required | {
         "feature:" + p.split(".")[-1].split("=")[0] for p in result["properties"] if p.endswith("=true")
     }
@@ -112,12 +115,14 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
 
     installed = []
     baseline = list(map(Path, data["mods"]))
-    for jar in baseline + list(mods) + ([api] if api else []):
+    api_jars = [api] if isinstance(api, Path) else list(api or [])
+    candidates = [(jar, True) for jar in baseline] + [(jar, False) for jar in list(mods) + api_jars]
+    for jar, is_baseline in candidates:
         if jar.name.startswith("fabric-loader-") or (not is_mod(jar) and jar not in mods):
             continue
         with zipfile.ZipFile(jar) as archive:
             metadata = json.loads(archive.read("fabric.mod.json")) if "fabric.mod.json" in archive.namelist() else {}
-        if api and jar in baseline and metadata.get("id") not in ("lvb", "lvb_smoke"):
+        if api and is_baseline and metadata.get("id") not in ("lvb", "lvb_smoke"):
             continue
         if runtime_manifest:
             if metadata.get("id") == "lvb_smoke":
@@ -212,7 +217,8 @@ def main():
     parser.add_argument("platform", choices=TARGETS)
     parser.add_argument("--profile", type=Path, required=True, help="New directory for this run")
     parser.add_argument("--mod", type=Path, action="append", default=[], help="Published mod JAR; repeat as needed")
-    parser.add_argument("--api", type=Path, help="Published API distribution replacing the baseline API modules")
+    parser.add_argument("--api", type=Path, action="append", default=[],
+                        help="Published API JAR replacing the baseline API modules; repeat for individual modules")
     parser.add_argument("--config", type=Path, help="Directory of mod configurations to copy")
     parser.add_argument("--options", type=Path, action="append", default=[], help="Minecraft options file; repeat as needed")
     parser.add_argument("--java", help="Java executable; defaults to the build's Java 8 launcher")
@@ -236,7 +242,7 @@ def main():
                   args.java, args.property, args.config.resolve() if args.config else None,
                   [p.resolve() for p in args.options], args.shader_pack.resolve() if args.shader_pack else None,
                   args.render_mode, args.native_refresh, args.missing_hook, args.reject_runtime,
-                  args.api.resolve() if args.api else None)
+                  [p.resolve() for p in args.api])
 
 
 if __name__ == "__main__":

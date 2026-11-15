@@ -3,6 +3,15 @@
 Versions follow [Semantic Versioning 2.0.0](https://semver.org/). The public compatibility
 surface is defined in [docs/compatibility.md](docs/compatibility.md).
 
+## [1.4.0] - Unreleased
+
+- Add native settings screens for all three distributions, with optional Mod Menu integration.
+- Add an unbound settings control while retaining the existing B visibility toggle.
+- Show active rendering, recovery and restart/override status without changing the running renderer.
+- Support keyboard navigation, scrolling, resize-preserved drafts and Minecraft Controls navigation.
+- Save UTF-8 preferences atomically, preserve unknown keys, detect external edits and back up invalid files before repair.
+- Translate settings into all nine existing languages and verify published Mod Menu builds on Java 8.
+
 ## [1.3.0] - 2026-11-15
 
 - Add an Ornithe Calamus Gen2 distribution alongside both existing Gen1 distributions.
@@ -58,6 +67,7 @@ surface is defined in [docs/compatibility.md](docs/compatibility.md).
 - Toggle barrier block visibility with a rebindable `B` key.
 - Provide translated controls and visibility feedback.
 
+[1.4.0]: https://github.com/metaconscious/legacy-visible-barrier/compare/v1.3.0...HEAD
 [1.3.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.3.0
 [1.2.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.2.0
 [1.1.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.1.0

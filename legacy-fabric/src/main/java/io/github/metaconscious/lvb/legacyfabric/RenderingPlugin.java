@@ -1,6 +1,7 @@
 package io.github.metaconscious.lvb.legacyfabric;
 
 import io.github.metaconscious.lvb.core.RenderingPolicy;
+import io.github.metaconscious.lvb.core.RenderingPreferences;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.MappingResolver;
 import net.fabricmc.loader.api.metadata.CustomValue;
@@ -15,13 +16,8 @@ import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 
 import java.io.IOException;
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -31,36 +27,36 @@ public final class RenderingPlugin implements IMixinConfigPlugin {
     private static final AtomicReference<Problem> PROBLEM = new AtomicReference<>();
     private static volatile RenderingPolicy policy;
     private static RenderingPolicy.Mode initialMode = RenderingPolicy.Mode.ENHANCED;
-    private static boolean fullReload;
+    private static RenderingPreferences startup = RenderingPreferences.DEFAULTS;
+    private static SettingsFile settingsFile;
+    private static String modeOverride;
+    private static String refreshOverride;
+    private static boolean configurationFailed;
 
     @Override
     public void onLoad(String mixinPackage) {
         verifyEnvironment();
-        Properties properties = new Properties();
-        Path path = FabricLoader.getInstance().getConfigDir().resolve("lvb.properties");
+        settingsFile = new SettingsFile(FabricLoader.getInstance().getConfigDir().resolve("lvb.properties"));
+        modeOverride = System.getProperty("lvb.renderMode");
+        refreshOverride = System.getProperty("lvb.nativeRefresh");
         try {
-            if (Files.exists(path)) {
-                try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-                    properties.load(reader);
-                }
-            }
-            String mode = System.getProperty("lvb.renderMode", properties.getProperty("renderMode", "auto"));
-            switch (mode) {
-                case "auto": case "enhanced": initialMode = RenderingPolicy.Mode.ENHANCED; break;
-                case "native": initialMode = RenderingPolicy.Mode.NATIVE; break;
-                case "off": initialMode = RenderingPolicy.Mode.OFF; break;
-                default: throw new IllegalArgumentException("Unknown renderMode: " + mode);
-            }
-            String refresh = System.getProperty("lvb.nativeRefresh", properties.getProperty("nativeRefresh", "dirty"));
-            if (!"dirty".equals(refresh) && !"reload".equals(refresh)) {
-                throw new IllegalArgumentException("Unknown nativeRefresh: " + refresh);
-            }
-            fullReload = "reload".equals(refresh);
+            startup = settingsFile.read().resolve(modeOverride, refreshOverride);
         } catch (IOException | IllegalArgumentException failure) {
-            initialMode = RenderingPolicy.Mode.NATIVE;
-            fullReload = false;
+            startup = RenderingPreferences.SAFE;
+            configurationFailed = true;
             LOG.warn("Cannot read LVB rendering configuration; using native mode with dirty refresh", failure);
         }
+        initialMode = startup.initialMode();
+    }
+
+    static SettingsFile settingsFile() { return settingsFile; }
+    static boolean modeOverridden() { return modeOverride != null; }
+    static boolean refreshOverridden() { return refreshOverride != null; }
+    static boolean configurationFailed() { return configurationFailed; }
+
+    static boolean restartRequired(SettingsFile.Snapshot saved) {
+        try { return !startup.sameBehavior(saved.resolve(modeOverride, refreshOverride)); }
+        catch (IllegalArgumentException invalid) { return false; }
     }
 
     /** Inspect mappings before any Minecraft type is loaded or rendering hooks are selected. */
@@ -117,7 +113,7 @@ public final class RenderingPlugin implements IMixinConfigPlugin {
         return PROBLEM.get() == null && current != null && current.nativeVisible();
     }
 
-    static boolean fullReload() { return fullReload; }
+    static boolean fullReload() { return startup.fullReload(); }
 
     /** Worker callers publish evidence only; the client coordinator owns the transition. */
     public static void report(RenderingPolicy.Failure kind, RuntimeException cause) {

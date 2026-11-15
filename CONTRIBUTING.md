@@ -44,7 +44,8 @@ Useful tasks:
 
 | Command | Purpose |
 | --- | --- |
-| `./gradlew :core:test` | Domain and lifecycle tests on Java 8 |
+| `./gradlew :core:test` | Domain, lifecycle and settings-draft tests on Java 8 |
+| `./gradlew :legacy-fabric:test :ornithe:test` | Configuration persistence tests on Java 8 |
 | `./gradlew testReleaseTools` | Release, artifact and compatibility-runner script tests |
 | `./gradlew verifyArtifacts` | Build and inspect all three remapped JARs |
 | `./gradlew verifyDistributions` | Alias for all-distribution artifact verification |
@@ -88,8 +89,8 @@ and `reports/client.json`. Other profiles write to `reports/nativeSmokeTest`,
 from distributions.
 
 Full verification builds all distributions, then runs the same client contracts
-against all three production JARs. The two additional negative launches require early
-rejection of the wrong Ornithe generation. CI runs this sequence before staging:
+against all three production JARs. Four additional Mod Menu profiles verify native settings through the published provider
+APIs; two negative launches require early rejection of the wrong Ornithe generation. CI runs this sequence before staging:
 
 ```sh
 ./gradlew clean build prepareModCompatibility
@@ -100,6 +101,10 @@ python3 tools/verify_clients.py --output build/client-tests
 The client runner requires a new output directory and a display; on headless Linux,
 prefix its command with `LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a`. Gen2 launch manifests
 include the package-access flag used by the official Ornithe launcher profile.
+
+Settings checks cover unbound/idempotent registration, title and world entry, keyboard
+editing, resize, persistence, parent return and preservation of runtime recovery.
+File persistence tests also run on Windows in CI.
 
 Client tests compare barrier pixels and water/glass blending against a shared reference
 batch, count geometry and terrain invalidations, exercise
@@ -132,7 +137,8 @@ Each `--profile` must be a new directory. Repeat `--mod` for additional JARs; th
 runner supplies LVB, its test mod and the adapter's baseline APIs. Add optional OSL
 modules when another mod requires them. To test a newer complete API distribution,
 use `--api /path/to/ornithe-standard-libraries.jar`; it replaces the baseline modules
-so their direct dependencies do not override the bundle's versions.
+so their direct dependencies do not override the bundle's versions. Repeat `--api`
+to supply a complete set of individual replacement API modules.
 `--config` copies a directory of mod settings
 into the profile, and `--java` selects a different Java executable for mods requiring
 a newer runtime. Use `--options /path/to/optionsof.txt` and repeat it for `options.txt`
@@ -164,7 +170,8 @@ fails the corresponding check:
 | `lvb.smoke.waypoints=true` | Supplies an in-view world label to AxolotlClient Waypoints and requires drawing. |
 | `lvb.smoke.miningProgress=true` | Adds active block-mining progress in Ornithe to exercise mods hooked into that rendering stage. |
 
-Third-party JARs are supplied locally and excluded from CI and release artifacts.
+The pinned Mod Menu UI profiles run in CI. Other third-party fixtures are supplied
+locally. Test mods and their dependencies are excluded from release artifacts.
 
 Fixture versions and their environments are listed in [compatibility.md](docs/compatibility.md).
 For dependency updates, edit `gradle/targets.json`, preserving the intermediary generation
@@ -187,7 +194,12 @@ launcher environment:
    native dirty refresh must converge without discarding existing meshes. Full reload
    can temporarily clear terrain. The barrier behind stone must remain occluded.
 5. Toggle off; confirm ordinary hidden barriers and vanilla particle behavior return.
-6. Rebind the key, reload resources, change worlds, and reconnect. Confirm the binding
+6. Open settings from Mod Menu at the title screen and from the settings binding in a
+   world. Change preferences, visit Controls and resize the window; retain the draft.
+   Use Tab/Shift-Tab and Enter/Space at a 320×240 logical viewport, all GUI scales,
+   and with long and CJK translations. Verify Save, Cancel/Escape, Reset and return
+   to the invoking screen. Confirm status reflects recovery and launch overrides.
+7. Rebind the key, reload resources, change worlds, and reconnect. Confirm the binding
    works and visibility is retained. Restart the client and confirm visibility is hidden.
 
 Keep reports concise: platform, Minecraft/Java/loader/API versions, reproduction steps,

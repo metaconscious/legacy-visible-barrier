@@ -39,10 +39,17 @@ public final class LegacyFabricClient implements ClientModInitializer {
         });
         KeyBinding key = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.toggle_barrier_visibility", Keyboard.KEY_B, "key.category.legacy_visible_barriers"));
+        KeyBinding settings = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.open_lvb_settings", Keyboard.KEY_NONE, "key.category.legacy_visible_barriers"));
         ClientTickEvents.END_CLIENT_TICK.register(ignored -> {
             rendering.recover();
             while (key.wasPressed()) {
                 controller.toggle();
+            }
+            while (settings.wasPressed()) {
+                if (client.currentScreen == null && client.world != null && client.player != null) {
+                    client.setScreen(new SettingsScreen(null));
+                }
             }
             rendering.finishTick();
         });

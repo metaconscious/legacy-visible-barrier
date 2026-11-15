@@ -37,6 +37,7 @@ subprojects {
             archiveFileName = "${targetId}-smoke.jar"
             destinationDirectory = directory
             addNestedDependencies = false
+            classpath.from(sourceSets.main.output)
         }
 
         tasks.register('prepareModCompatibility') {
@@ -53,6 +54,7 @@ subprojects {
                         platform: target.platform,
                         target: targetId,
                         version: project.version,
+                        menu_mods: configurations.menuTestMods.files.collect { it.path },
                         mapping: [generation: target.generation, minecraft: minecraft_version,
                                   namespace: target.mapping_family, build: target.mapping_build],
                         jvm_args: target.jvm_args ?: [],
@@ -68,6 +70,16 @@ subprojects {
                         mods: mods.collect { it.path } + [tasks.named('remapJar').get().archiveFile.get().asFile.path,
                                                         remappedSmoke.get().archiveFile.get().asFile.path]
                 ]
+                if (target.mod_menu.additional_test) {
+                    def extra = target.mod_menu.additional_test
+                    def resolveFiles = { coordinates ->
+                        def configuration = configurations.detachedConfiguration(*coordinates.collect { project.dependencies.create(it) })
+                        configuration.transitive = false
+                        configuration.files.collect { it.path }
+                    }
+                    launch.menu_additional = [mods: resolveFiles([extra.coordinate]),
+                            api: resolveFiles(extra.api_modules.collect { module, revision -> "${target.api_group}:${module}:${revision}" })]
+                }
                 directory.get().file('launch.json').asFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(launch)) + '\n'
             }
         }

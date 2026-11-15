@@ -10,9 +10,18 @@
     "loader_version": "0.16.13",
     "loader_minimum": "0.14.19",
     "api_group": "net.legacyfabric.legacy-fabric-api",
-    "api_modules": {"legacy-fabric-api": "1.11.1+1.8.9"},
+    "api_modules": {
+      "legacy-fabric-api": "1.11.1+1.8.9"
+    },
     "runtime_modules": [],
-    "sentinels": {"ave": "net.minecraft.class_1600", "bfk": "net.minecraft.class_524"}
+    "sentinels": {
+      "ave": "net.minecraft.class_1600",
+      "bfk": "net.minecraft.class_524"
+    },
+    "mod_menu": {
+      "coordinate": "maven.modrinth:XzTYkVLx:r7PigOJk",
+      "minimum": "1.1.0"
+    }
   },
   "ornithe": {
     "project": ":ornithe:gen1",
@@ -32,8 +41,18 @@
       "lifecycle-events": "0.5.6+mc13w36a-09051446-mc1.13",
       "resource-loader": "0.5.4+mc13w26a-mc1.10.2"
     },
-    "runtime_modules": ["entrypoints", "resource-loader"],
-    "sentinels": {"ave": "net.minecraft.unmapped.C_8105098", "bfk": "net.minecraft.unmapped.C_0259655"}
+    "runtime_modules": [
+      "entrypoints",
+      "resource-loader"
+    ],
+    "sentinels": {
+      "ave": "net.minecraft.unmapped.C_8105098",
+      "bfk": "net.minecraft.unmapped.C_0259655"
+    },
+    "mod_menu": {
+      "coordinate": "com.terraformersmc:modmenu:0.3.1+mc1.8.9",
+      "minimum": "0.3.1"
+    }
   },
   "ornithe.gen2": {
     "project": ":ornithe:gen2",
@@ -43,7 +62,10 @@
     "generation": 2,
     "mapping_family": "calamus",
     "mapping_build": 2,
-    "jvm_args": ["-Dfabric.fixPackageAccess=true", "-Dfabric.gameVersion=1.8.9"],
+    "jvm_args": [
+      "-Dfabric.fixPackageAccess=true",
+      "-Dfabric.gameVersion=1.8.9"
+    ],
     "loader_version": "0.18.1",
     "loader_minimum": "0.18.1",
     "api_group": "net.ornithemc.osl-gen2",
@@ -54,7 +76,30 @@
       "lifecycle-events": "0.6.0+mc13w36a-mc1.13",
       "resource-loader": "0.6.0+mc13w26a-mc1.10.2"
     },
-    "runtime_modules": ["entrypoints", "resource-loader"],
-    "sentinels": {"ave": "net.minecraft.client.Minecraft", "bfk": "net.minecraft.unmapped.C_03140863"}
+    "runtime_modules": [
+      "entrypoints",
+      "resource-loader"
+    ],
+    "sentinels": {
+      "ave": "net.minecraft.client.Minecraft",
+      "bfk": "net.minecraft.unmapped.C_03140863"
+    },
+    "mod_menu": {
+      "coordinate": "com.terraformersmc:modmenu:0.4.0+mc1.8.9",
+      "minimum": "0.4.0",
+      "additional_test": {
+        "coordinate": "com.terraformersmc:modmenu:0.5.0+mc1.8.9",
+        "api_modules": {
+          "core": "0.9.0+mc14w27a-mc1.14.4",
+          "entrypoints": "0.5.0+mc13w16a-mc1.14.4",
+          "keybinds": "0.2.0+mc13w36a-mc17w15a",
+          "lifecycle-events": "0.6.0+mc13w36a-mc1.13",
+          "resource-loader": "0.7.2+mc1.8.2-pre5-mc1.12.2",
+          "executors": "0.1.0+mc14w21a-mc1.13.2",
+          "localization": "0.1.0+mc13w26a-mc18w01a",
+          "text-components": "0.1.0-alpha.3+mca0.1.0-mc1.14.4"
+        }
+      }
+    }
   }
 }

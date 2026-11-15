@@ -15,6 +15,34 @@ permissions:
   contents: read
 
 jobs:
+  settings-windows:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.release_tag || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            21
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      - name: Verify settings persistence on Windows
+        run: ./gradlew --no-daemon --max-workers=2 :legacy-fabric:test :ornithe:test
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: windows-settings-reports
+          path: |
+            legacy-fabric/build/test-results/
+            ornithe/build/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -76,6 +104,8 @@ jobs:
           path: |
             core/build/test-results/
             core/build/reports/tests/
+            legacy-fabric/build/test-results/
+            ornithe/build/test-results/
             build/reports/artifacts.json
             legacy-fabric/build/reports/smoke-test.txt
             legacy-fabric/build/reports/client.json

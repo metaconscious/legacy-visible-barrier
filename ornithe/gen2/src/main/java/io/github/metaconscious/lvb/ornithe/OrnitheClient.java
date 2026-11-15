@@ -39,11 +39,21 @@ public final class OrnitheClient implements ClientModInitializer {
         });
         KeyBinding key = new KeyBinding(
                 "key.toggle_barrier_visibility", Keyboard.KEY_B, "key.category.legacy_visible_barriers");
-        KeyBindingEvents.REGISTER_KEYBINDS.register(registry -> registry.register(key));
+        KeyBinding settings = new KeyBinding(
+                "key.open_lvb_settings", Keyboard.KEY_NONE, "key.category.legacy_visible_barriers");
+        KeyBindingEvents.REGISTER_KEYBINDS.register(registry -> {
+            registry.register(key);
+            registry.register(settings);
+        });
         MinecraftClientEvents.TICK_END.register(ignored -> {
             rendering.recover();
             while (key.consumeClick()) {
                 controller.toggle();
+            }
+            while (settings.consumeClick()) {
+                if (client.screen == null && client.world != null && client.player != null) {
+                    client.openScreen(new SettingsScreen(null));
+                }
             }
             rendering.finishTick();
         });

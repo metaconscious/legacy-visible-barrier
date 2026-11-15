@@ -11,7 +11,7 @@ The domain is visibility intent and effective rendering availability. `Visibilit
 and exposes a read-only `VisibilityView`. `ClientEffects` is the boundary for world
 availability and translated feedback. The adapters implement
 that boundary with their respective Minecraft and platform APIs. `RenderingPolicy`
-publishes one immutable snapshot containing the mode and requested visibility. Client decisions remain private until the tick finishes, so workers never observe
+publishes one immutable snapshot containing the mode, requested visibility and latched failure reason. Client decisions remain private until the tick finishes, so workers never observe
 intermediate cancelling toggles. The policy owns monotonic failure transitions and
 coalesces native geometry refresh decisions.
 
@@ -29,11 +29,11 @@ flowchart LR
 
 | Project | Contents | Production dependencies |
 | --- | --- | --- |
-| `core` | Visibility, rendering policy, interfaces and translucent ordering | Java standard library |
+| `core` | Visibility, rendering policy, preferences, edit drafts and translucent ordering | Java standard library |
 | `shared-resources` | Nine translations, icon, barrier models and texture | None |
-| `legacy-fabric` | Client entrypoint, chunk indexes, rendering adapters, Mixins, metadata | Core, resources, Legacy Fabric API, Fabric Loader, Minecraft |
-| `ornithe` | Shared bootstrap policy bridge, vertex-origin contract and test helpers | Core; compile-only Fabric Loader, Mixin, ASM and logging APIs |
-| `ornithe:gen1`, `ornithe:gen2` | Client entrypoints, chunk indexes, rendering adapters, Mixins, metadata | Core, shared Ornithe classes, resources, generation-specific OSL and Minecraft |
+| `legacy-fabric` | Client entrypoint, settings screen and persistence, rendering adapters, Mixins, metadata | Core, resources, Legacy Fabric API, Fabric Loader, Minecraft |
+| `ornithe` | Shared bootstrap, settings persistence, vertex-origin contract and test helpers | Core; compile-only Fabric Loader, Mixin, ASM and logging APIs |
+| `ornithe:gen1`, `ornithe:gen2` | Client entrypoints, settings screens, rendering adapters, Mixins, metadata | Core, shared Ornithe classes, resources, generation-specific OSL and Minecraft |
 
 `shared-resources` exposes a resource archive through a consumable Gradle configuration.
 Adapters consume it through project dependencies. Core classes are embedded directly
@@ -86,6 +86,34 @@ model Mixin enables the barrier block model. Input handling and visibility trans
 remain outside Mixins. `RenderingPlugin` selects an immutable startup hook profile
 without loading Minecraft classes. `RenderingCoordinator` applies runtime decisions
 and native invalidation on the client thread.
+
+### Settings and optional UI integration
+
+`RenderingPreferences` validates the two startup settings and resolves JVM overrides
+before file values. `SettingsDraft` owns edits and dirty/reset behavior. Both are pure
+Java core types. The adapter's `SettingsFile` owns UTF-8 properties parsing and writes;
+shared Ornithe code contains no mapped Minecraft or screen types.
+
+Each mapping target owns a native `SettingsScreen`. A fresh screen holds a saved
+snapshot and an independent draft, retained through resize and Controls navigation.
+It reads immutable runtime status but has no operation that changes the active policy.
+Saving cannot clear recovery, install omitted Mixins, toggle visibility or refresh
+terrain. Preferences take effect on the next process start.
+
+A single asynchronous save writes an immutable draft to a sibling temporary file.
+Completion is observed on the client tick; widgets and screen transitions stay on
+that thread. A save checks the original bytes before replacement, preserves unknown
+valid properties, and backs up an invalid original before an explicit repair. Atomic
+replacement failure leaves the original in place and the draft available for retry.
+External edits require reloading the file. Opening or cancelling the screen never
+writes configuration.
+
+`ModMenuIntegration` is a separate, lazily requested custom entrypoint. Only that class
+references the optional provider API; normal client and bootstrap signatures do not.
+Each adapter compiles against its matching released Mod Menu with transitive resolution
+disabled. Mod Menu is neither bundled nor required to start LVB. Production client
+checks run with the provider absent and with each pinned supported build. An unbound
+settings key provides an independent in-world entry route.
 
 ### Rendering in Minecraft 1.8.9
 
@@ -234,7 +262,7 @@ stale references. Visibility changes never mutate world data. Enhanced toggles p
 no chunk rebuild, terrain reload, or non-barrier model submission; native toggles use
 the configured terrain refresh policy.
 
-Core tests cover visibility, mode transitions, refresh coalescing, thread ownership and draw ordering. Client smoke tests
+Core tests cover visibility, mode transitions, refresh coalescing, thread ownership, draw ordering and preference/draft decisions. Focused file tests cover unknown keys, UTF-8, failed writes, external edits and explicit repair. Client UI checks cover optional entrypoints, keyboard editing, resize, Save/Cancel and runtime-state isolation. Client smoke tests
 compare water/glass overlap with a shared reference batch and verify barrier-only pixel
 changes, compiled terrain submission, frame hooks, lifecycle updates and
 restoration of changed graphics state. Optional mod fixtures exercise enabled rendering

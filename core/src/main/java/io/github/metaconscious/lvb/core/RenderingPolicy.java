@@ -10,10 +10,12 @@ public final class RenderingPolicy {
     public static final class State {
         public final Mode mode;
         public final boolean requestedVisible;
+        public final Failure failure;
 
-        private State(Mode mode, boolean requestedVisible) {
+        private State(Mode mode, boolean requestedVisible, Failure failure) {
             this.mode = mode;
             this.requestedVisible = requestedVisible;
+            this.failure = failure;
         }
 
         public boolean available() { return mode == Mode.ENHANCED || mode == Mode.NATIVE; }
@@ -26,7 +28,7 @@ public final class RenderingPolicy {
     private State decision;
 
     public RenderingPolicy(Mode initial) {
-        state = new State(Objects.requireNonNull(initial, "initial"), false);
+        state = new State(Objects.requireNonNull(initial, "initial"), false, null);
         decision = state;
     }
 
@@ -40,7 +42,7 @@ public final class RenderingPolicy {
 
     public void requestVisibility(boolean visible) {
         requireOwner();
-        decision = new State(decision.mode, visible);
+        decision = new State(decision.mode, visible, decision.failure);
     }
 
     /** Recovery is monotonic for the session; a failed enhanced backend is never retried. */
@@ -53,7 +55,7 @@ public final class RenderingPolicy {
             else if (next == Mode.ENHANCED) next = Mode.NATIVE;
         }
         if (next == decision.mode) return false;
-        decision = new State(next, decision.requestedVisible);
+        decision = new State(next, decision.requestedVisible, failure);
         return true;
     }
 
