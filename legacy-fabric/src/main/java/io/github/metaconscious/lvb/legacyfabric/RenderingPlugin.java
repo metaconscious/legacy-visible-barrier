@@ -2,12 +2,15 @@ package io.github.metaconscious.lvb.legacyfabric;
 
 import io.github.metaconscious.lvb.core.RenderingPolicy;
 import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.MappingResolver;
+import net.fabricmc.loader.api.metadata.CustomValue;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.spongepowered.asm.launch.MixinInitialisationError;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 
@@ -17,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
@@ -31,6 +35,7 @@ public final class RenderingPlugin implements IMixinConfigPlugin {
 
     @Override
     public void onLoad(String mixinPackage) {
+        verifyEnvironment();
         Properties properties = new Properties();
         Path path = FabricLoader.getInstance().getConfigDir().resolve("lvb.properties");
         try {
@@ -55,6 +60,29 @@ public final class RenderingPlugin implements IMixinConfigPlugin {
             initialMode = RenderingPolicy.Mode.NATIVE;
             fullReload = false;
             LOG.warn("Cannot read LVB rendering configuration; using native mode with dirty refresh", failure);
+        }
+    }
+
+    /** Inspect mappings before any Minecraft type is loaded or rendering hooks are selected. */
+    private static void verifyEnvironment() {
+        FabricLoader loader = FabricLoader.getInstance();
+        CustomValue.CvObject target = loader.getModContainer("lvb").get().getMetadata()
+                .getCustomValue("lvb:target").getAsObject();
+        MappingResolver mappings = loader.getMappingResolver();
+        boolean matches = mappings.getNamespaces().contains("official")
+                && mappings.getNamespaces().contains("intermediary");
+        if (matches) {
+            for (Map.Entry<String, CustomValue> sentinel : target.get("sentinels").getAsObject()) {
+                String actual = mappings.unmapClassName("intermediary",
+                        mappings.mapClassName("official", sentinel.getKey()));
+                matches &= sentinel.getValue().getAsString().equals(actual);
+            }
+        }
+        if (!matches) {
+            // Mixin logs and ignores ordinary exceptions while selecting configurations.
+            throw new MixinInitialisationError("LVB mapping generation mismatch: this JAR requires "
+                    + target.get("name").getAsString()
+                    + " for Minecraft 1.8.9. Install the LVB download matching your launcher profile.");
         }
     }
 

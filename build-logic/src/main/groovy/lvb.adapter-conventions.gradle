@@ -1,7 +1,14 @@
 plugins { id 'lvb.java-conventions' }
 
-version = "${providers.gradleProperty('mod_version').get()}+${project.name}"
+ext.targetId = project.name == 'ornithe' ? rootProject.ornitheTarget : project.name
+ext.target = rootProject.targetCatalog[targetId]
+layout.buildDirectory = layout.projectDirectory.dir(target.build_directory)
+version = "${providers.gradleProperty('mod_version').get()}+${targetId}"
 base.archivesName = 'legacy-visible-barrier'
+
+configurations.configureEach {
+    resolutionStrategy.force "net.fabricmc:fabric-loader:${target.loader_version}"
+}
 
 configurations {
     bundledCore {
@@ -16,6 +23,10 @@ configurations {
         canBeConsumed = true
         canBeResolved = false
     }
+    verificationMappings {
+        canBeConsumed = false
+        transitive = false
+    }
 }
 
 artifacts { productionJarElements tasks.named('remapJar') }
@@ -24,15 +35,37 @@ dependencies {
     implementation project(':core')
     bundledCore project(':core')
     sharedResources project(path: ':shared-resources', configuration: 'resourceElements')
+    def intermediary = project.name == 'legacy-fabric' ? 'net.legacyfabric:intermediary' :
+            "net.ornithemc:calamus-intermediary${target.generation == 2 ? '-gen2' : ''}"
+    verificationMappings "${intermediary}:${minecraft_version}:v2"
 }
+
+tasks.register('prepareVerificationMappings', Copy) {
+    from { zipTree(configurations.verificationMappings.singleFile) }
+    include 'mappings/mappings.tiny'
+    into layout.buildDirectory.dir('verification')
+}
+tasks.named('check') { dependsOn 'prepareVerificationMappings' }
 
 tasks.named('processResources', ProcessResources) {
     dependsOn configurations.sharedResources
     inputs.property 'version', project.version
     inputs.property 'minecraftVersion', providers.gradleProperty('minecraft_version')
+    inputs.property 'target', target
+    def apiDependencies = target.api_modules.collectEntries { module, moduleVersion ->
+        [(project.name == 'ornithe' ? "osl-${module}".toString() : module):
+                 ">=${project.name == 'ornithe' ? moduleVersion.split('\\+')[0] : moduleVersion}"]
+    }
+    inputs.property 'apiMinimums', apiDependencies
     filesMatching('fabric.mod.json') {
         expand version: project.version,
-                minecraftVersion: providers.gradleProperty('minecraft_version').get()
+                minecraftVersion: providers.gradleProperty('minecraft_version').get(),
+                loaderMinimum: target.loader_minimum,
+                apiMinimums: apiDependencies,
+                targetId: targetId, targetName: target.name, sentinels: target.sentinels
+    }
+    filesMatching('*.mixins.json') {
+        expand targetId: targetId
     }
     from({ configurations.sharedResources.collect { zipTree(it) } }) {
         exclude 'META-INF/**'
@@ -57,10 +90,17 @@ sourceSets {
     }
 }
 
+tasks.named('processSmokeTestResources', ProcessResources) {
+    inputs.property 'targetId', targetId
+    filesMatching('*.mixins.json') { expand targetId: targetId }
+}
+
 loom {
     mixin {
-        add sourceSets.main, "lvb-${project.name}.refmap.json"
-        add sourceSets.smokeTest, "lvb-${project.name}-smoke.refmap.json"
+        useLegacyMixinAp = true
+        defaultRefmapName = "lvb-${targetId}.refmap.json"
+        add sourceSets.main, "lvb-${targetId}.refmap.json"
+        add sourceSets.smokeTest, "lvb-${targetId}-smoke.refmap.json"
     }
     mods {
         lvb { sourceSet sourceSets.main }
@@ -70,8 +110,10 @@ loom {
         smokeTest {
             client()
             source sourceSets.smokeTest
-            runDir 'build/smoke-test/run'
+            runDir "${target.build_directory}/smoke-test/run"
             vmArg '-Dlvb.smoke.report=' + layout.buildDirectory.file('reports/smoke-test.txt').get().asFile
+            vmArg '-Dlvb.smoke.expectedMode=enhanced'
+            vmArg '-Dfabric.disableErrorGui=true'
         }
     }
     [nativeSmokeTest: [],
@@ -80,8 +122,10 @@ loom {
         runs.create(name) {
             client()
             source sourceSets.smokeTest
-            runDir "build/${name}/run"
+            runDir "${target.build_directory}/${name}/run"
             vmArg '-Dlvb.smoke.report=' + layout.buildDirectory.file("reports/${name}/smoke.txt").get().asFile
+            vmArg '-Dlvb.smoke.expectedMode=' + (name == 'offSmokeTest' ? 'off' : 'native')
+            vmArg '-Dfabric.disableErrorGui=true'
             arguments.each { vmArg it }
         }
     }

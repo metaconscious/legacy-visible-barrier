@@ -1,0 +1,65 @@
+{
+  "legacy-fabric": {
+    "platform": "legacy-fabric",
+    "name": "Legacy Fabric generation 1",
+    "build_directory": "build",
+    "generation": 1,
+    "mapping_family": "legacy-intermediary",
+    "mapping_build": 568,
+    "loader_version": "0.16.13",
+    "loader_minimum": "0.14.19",
+    "api_group": "net.legacyfabric.legacy-fabric-api",
+    "api_modules": {"legacy-fabric-api": "1.11.1+1.8.9"},
+    "runtime_modules": [],
+    "sentinels": {"ave": "net.minecraft.class_1600", "bfk": "net.minecraft.class_524"},
+    "modrinth_project": "FSLuAotK",
+    "dependency": "9CJED7xi"
+  },
+  "ornithe": {
+    "platform": "ornithe",
+    "name": "Ornithe generation 1",
+    "build_directory": "build/gen1",
+    "generation": 1,
+    "mapping_family": "calamus",
+    "mapping_build": 28,
+    "loader_version": "0.18.1",
+    "loader_minimum": "0.18.1",
+    "api_group": "net.ornithemc.osl",
+    "api_modules": {
+      "core": "0.6.0",
+      "entrypoints": "0.4.3+mc13w16a-04192037-mc1.14.4",
+      "keybinds": "0.1.3+mc13w36a-09051446-mc17w15a",
+      "lifecycle-events": "0.5.6+mc13w36a-09051446-mc1.13",
+      "resource-loader": "0.5.4+mc13w26a-mc1.10.2"
+    },
+    "runtime_modules": ["entrypoints", "resource-loader"],
+    "sentinels": {"ave": "net.minecraft.unmapped.C_8105098", "bfk": "net.minecraft.unmapped.C_0259655"},
+    "modrinth_project": "FSLuAotK",
+    "dependency": "EHGtwpJv",
+    "dependency_version": "wbCVLcP4"
+  },
+  "ornithe.gen2": {
+    "platform": "ornithe",
+    "name": "Ornithe generation 2",
+    "build_directory": "build/gen2",
+    "generation": 2,
+    "mapping_family": "calamus",
+    "mapping_build": 2,
+    "jvm_args": ["-Dfabric.fixPackageAccess=true", "-Dfabric.gameVersion=1.8.9"],
+    "loader_version": "0.18.1",
+    "loader_minimum": "0.18.1",
+    "api_group": "net.ornithemc.osl-gen2",
+    "api_modules": {
+      "core": "0.7.0",
+      "entrypoints": "0.5.0+mc13w16a-mc1.14.4",
+      "keybinds": "0.2.0+mc13w36a-mc17w15a",
+      "lifecycle-events": "0.6.0+mc13w36a-mc1.13",
+      "resource-loader": "0.6.0+mc13w26a-mc1.10.2"
+    },
+    "runtime_modules": ["entrypoints", "resource-loader"],
+    "sentinels": {"ave": "net.minecraft.client.Minecraft", "bfk": "net.minecraft.unmapped.C_03140863"},
+    "modrinth_project_env": "MODRINTH_GEN2_PROJECT_ID",
+    "dependency": "EHGtwpJv",
+    "dependency_version": "PSPwlyvh"
+  }
+}

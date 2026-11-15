@@ -1,21 +1,27 @@
 import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
 import net.fabricmc.loom.task.RemapJarTask
 
 buildscript {
     configurations.classpath {
-        resolutionStrategy.force 'net.fabricmc:fabric-loom:1.11.8'
+        resolutionStrategy.force 'net.fabricmc:fabric-loom:1.15.5'
     }
 }
 
 plugins {
     id 'base'
-    id 'fabric-loom' version '1.11.8' apply false
-    id 'legacy-looming' version '1.11.8' apply false
-    id 'ploceus' version '1.11.6' apply false
+    id 'net.fabricmc.fabric-loom-remap' version '1.15.5' apply false
+    id 'legacy-looming' version '1.15.3' apply false
+    id 'ploceus' version '1.15.9' apply false
 }
 
 group = 'io.github.metaconscious.mod'
 version = providers.gradleProperty('mod_version').get()
+
+ext.targetCatalog = new JsonSlurper().parse(file('gradle/targets.json'))
+def generation = providers.gradleProperty('lvbOrnitheGeneration').getOrElse('1')
+if (!(generation in ['1', '2'])) throw new GradleException('lvbOrnitheGeneration must be 1 or 2')
+ext.ornitheTarget = generation == '1' ? 'ornithe' : 'ornithe.gen2'
 
 subprojects {
     plugins.withId('lvb.adapter-conventions') {
@@ -45,10 +51,11 @@ subprojects {
                 def minecraft = loom.minecraftProvider
                 def launch = [
                         platform: project.name,
+                        target: targetId,
                         version: project.version,
-                        mapping: [generation: 1, minecraft: minecraft_version,
-                                  namespace: project.name == 'legacy-fabric' ? 'legacy-intermediary' : 'calamus',
-                                  build: project.name == 'legacy-fabric' ? legacy_yarn_build : ornithe_feather_build],
+                        mapping: [generation: target.generation, minecraft: minecraft_version,
+                                  namespace: target.mapping_family, build: target.mapping_build],
+                        jvm_args: target.jvm_args ?: [],
                         java: tasks.named('runSmokeTest').get().javaLauncher.get().executablePath.asFile.path,
                         classpath: sourceSets.smokeTest.runtimeClasspath.files.collect { it.path },
                         core: configurations.bundledCore.singleFile.path,
@@ -92,20 +99,49 @@ dependencies {
 
 tasks.register('verifyArtifacts', Exec) {
     group = 'verification'
-    description = 'Checks both remapped JARs, embedded core, bytecode, resources and metadata.'
-    dependsOn ':core:jar', ':legacy-fabric:remapJar', ':ornithe:remapJar'
+    description = 'Checks the selected remapped JARs, mapping generation, core, bytecode and resources.'
+    dependsOn ':core:jar', ':legacy-fabric:remapJar', ':ornithe:remapJar',
+            ':legacy-fabric:prepareVerificationMappings', ':ornithe:prepareVerificationMappings'
     inputs.files(configurations.coreArchive, configurations.legacyDistribution, configurations.ornitheDistribution)
     inputs.dir 'shared-resources/src/main/resources/assets'
-    inputs.files 'tools/verify_artifacts.py', 'tools/versions.py'
+    inputs.files 'tools/verify_artifacts.py', 'tools/versions.py', 'gradle/targets.json'
+    inputs.files(['legacy-fabric', ornitheTarget].collect { id ->
+        def info = targetCatalog[id]
+        file("${info.platform}/${info.build_directory}/verification/mappings/mappings.tiny")
+    })
     inputs.property 'version', project.version
-    outputs.file layout.buildDirectory.file('reports/artifacts.json')
+    inputs.property 'ornitheTarget', ornitheTarget
+    outputs.file layout.buildDirectory.file("reports/artifacts-gen${generation}.json")
     doFirst {
         commandLine 'python3', 'tools/verify_artifacts.py', '--base-version', project.version,
                 '--core', configurations.coreArchive.singleFile,
-                '--legacy-fabric', configurations.legacyDistribution.singleFile,
-                '--ornithe', configurations.ornitheDistribution.singleFile,
+                '--assets', file('shared-resources/src/main/resources/assets'),
+                '--report', layout.buildDirectory.file("reports/artifacts-gen${generation}.json").get().asFile
+        ['legacy-fabric', ornitheTarget].each { id ->
+            def info = targetCatalog[id]
+            def directory = file("${info.platform}/${info.build_directory}")
+            args '--artifact', "${id}=${directory}/libs/legacy-visible-barrier-${version}+${id}.jar",
+                    '--mappings', "${id}=${directory}/verification/mappings/mappings.tiny"
+        }
+    }
+}
+
+tasks.register('verifyDistributions', Exec) {
+    group = 'verification'
+    description = 'Verifies all three previously built distributions together.'
+    dependsOn ':core:jar'
+    mustRunAfter ':legacy-fabric:remapJar', ':ornithe:remapJar',
+            ':legacy-fabric:prepareVerificationMappings', ':ornithe:prepareVerificationMappings'
+    doFirst {
+        commandLine 'python3', 'tools/verify_artifacts.py', '--base-version', project.version,
+                '--core', configurations.coreArchive.singleFile,
                 '--assets', file('shared-resources/src/main/resources/assets'),
                 '--report', layout.buildDirectory.file('reports/artifacts.json').get().asFile
+        targetCatalog.each { id, info ->
+            def directory = file("${info.platform}/${info.build_directory}")
+            args '--artifact', "${id}=${directory}/libs/legacy-visible-barrier-${version}+${id}.jar",
+                    '--mappings', "${id}=${directory}/verification/mappings/mappings.tiny"
+        }
     }
 }
 
@@ -126,13 +162,15 @@ tasks.register('smokeTest') {
 tasks.register('stageRelease', Exec) {
     group = 'distribution'
     description = 'Stages the verified JARs and release manifest from a clean checkout.'
-    dependsOn 'check'
+    dependsOn 'verifyDistributions'
     doFirst {
         commandLine 'python3', 'tools/release.py', 'stage', '--base-version', project.version,
                 '--report', layout.buildDirectory.file('reports/artifacts.json').get().asFile,
-                '--legacy-fabric', configurations.legacyDistribution.singleFile,
-                '--ornithe', configurations.ornitheDistribution.singleFile,
                 '--output', layout.buildDirectory.dir('distributions').get().asFile
+        targetCatalog.each { id, info ->
+            def directory = file("${info.platform}/${info.build_directory}")
+            args '--artifact', "${id}=${directory}/libs/legacy-visible-barrier-${version}+${id}.jar"
+        }
         if (providers.gradleProperty('releaseTag').present) {
             args '--tag', providers.gradleProperty('releaseTag').get()
         }

@@ -1,7 +1,7 @@
 # Architecture
 
-The build has four projects and a small included `build-logic` build. It produces two
-independent client mods for Minecraft 1.8.9. The adapters use different mappings and
+The build has four projects and a small included `build-logic` build. It produces three
+alternative client distributions for Minecraft 1.8.9. The adapters use different mappings and
 intermediary namespaces; each distribution contains the same core classes and assets.
 
 ## Architecture
@@ -31,7 +31,7 @@ flowchart LR
 | `core` | Visibility, rendering policy, interfaces and translucent ordering | Java standard library |
 | `shared-resources` | Nine translations, icon, barrier models and texture | None |
 | `legacy-fabric` | Client entrypoint, chunk indexes, rendering adapters, Mixins, metadata | Core, resources, Legacy Fabric API, Fabric Loader, Minecraft |
-| `ornithe` | Client entrypoint, chunk indexes, rendering adapters, Mixins, metadata | Core, resources, OSL modules, Fabric Loader, Minecraft |
+| `ornithe` | Shared client integration and generation-specific rendering sources | Core, resources, OSL modules, Fabric Loader, Minecraft |
 
 `shared-resources` exposes a resource archive through a consumable Gradle configuration.
 Adapters consume it through project dependencies. Core classes are embedded directly
@@ -46,6 +46,27 @@ root build aggregates checks and distributions; it contains no mod sources.
 Committed daemon JVM criteria select JDK 21 for both command-line and IDE builds.
 Each settings build configures toolchain provisioning, so the included build can resolve
 its compiler independently and the main build can provision the Java 8 test runtime.
+
+### Mapping targets
+
+`gradle/targets.json` defines each distribution's mapping generation, dependencies,
+output directory, bootstrap sentinels and publication destination. The default build
+selects Legacy Fabric Gen1 and Ornithe Gen1. `-PlvbOrnitheGeneration=2` selects Ornithe
+Gen2; it leaves Legacy Fabric on its existing generation. Run the two configurations
+sequentially in one checkout. Ornithe outputs live in `build/gen1` and `build/gen2`.
+
+The Ornithe adapter shares mapping-stable sources in `src/main/java`. Files whose
+Minecraft names differ live in `src/gen1/java` and `src/gen2/java`; the build selects
+exactly one directory. Smoke fixtures use corresponding generation directories.
+Each target compiles and remaps against its own Feather and Calamus artifacts and
+gets a distinct refmap. Core logic and shared resources are generation-independent.
+
+Before selecting rendering hooks, `RenderingPlugin` uses Fabric Loader's public
+mapping resolver to check two official-to-intermediary class identities against the
+packaged target metadata. This works in named development and intermediary production
+launches without loading Minecraft classes. A mismatch aborts bootstrap with the
+required environment in the diagnostic. Rendering fallback applies only inside a
+compatible mapping environment; it cannot translate binary class identities.
 
 ## Boundaries
 
@@ -69,10 +90,10 @@ blocks retain vanilla render type `-1` in enhanced mode, keeping their geometry
 out of those meshes. Toggling changes a flag read by the enhanced barrier pass. In native
 mode, visible barriers use model render type `3` and the translucent terrain layer.
 
-| Hook | Legacy Yarn build 568 | Feather build 28 |
+| Hook | Legacy Yarn build 568 | Feather Gen1 build 28 / Gen2 build 2 |
 | --- | --- | --- |
 | Main camera pass | `GameRenderer.renderWorld(int, float, long)` around the translucent `WorldRenderer.renderLayer(...)` call | `GameRenderer.render(int, float, long)` around the translucent `WorldRenderer.render(...)` call |
-| Terrain submission | `AbstractChunkRenderManager.render(RenderLayer)` in `WorldRenderer` | `RenderChunkList.render(BlockLayer)` in `WorldRenderer` |
+| Terrain submission | `AbstractChunkRenderManager.render(RenderLayer)` in `WorldRenderer` | `RenderChunkList.render(BlockLayer)` inside Gen1 `WorldRenderer.render(BlockLayer)` or Gen2 `WorldRenderer.renderLastChunks(BlockLayer)` |
 | Compiled translucent vertices | `ChunkAssemblyHelper.setDrawArrayParameters(...)` | `CompiledChunk.setTransparencyState(...)` |
 | Successful block change | `Chunk.getBlockState(BlockPos, BlockState)` | `WorldChunk.setBlockState(BlockPos, BlockState)` |
 | Chunk packet applied | `Chunk.method_3895(byte[], int, boolean)` | `WorldChunk.update(byte[], int, boolean)` |
@@ -171,8 +192,9 @@ The coordinator validates the shared baked barrier model on client ticks in a wo
 A missing model or a contained model-rendering failure makes visualization unavailable.
 Requested visibility remains separate from effective visibility and particle suppression.
 
-Native refresh uses `WorldRenderer.onRenderRegionUpdate(...)` in Legacy Yarn or
-`WorldRenderer.onRegionChanged(...)` in Feather. A bounded region spanning the camera's
+Native refresh uses `WorldRenderer.onRenderRegionUpdate(...)` in Legacy Yarn,
+`WorldRenderer.onRegionChanged(...)` in Feather Gen1, or
+`WorldRenderer.notifyRegionChanged(...)` in Feather Gen2. A bounded region spanning the camera's
 render-distance storage and world height marks all relevant sections dirty without
 loading world chunks. Existing meshes remain until replacement; Minecraft owns task
 cancellation and uploads. `RenderingPolicy.takeNativeRefresh()` compares the final
@@ -213,8 +235,10 @@ changes, compiled terrain submission, frame hooks, lifecycle updates and
 restoration of changed graphics state. Optional mod fixtures exercise enabled rendering
 features. Separate client launches exercise native hook isolation, off mode and a
 competing redirect that removes the enhanced terrain hook. A contained failure fixture
-checks graphics cleanup, one-way handover and shared-model unavailability. Artifact checks enforce module isolation, metadata, assets, Java 8 bytecode
-and exclusion of test classes.
+checks graphics cleanup, one-way handover and shared-model unavailability. Wrong-generation
+launches must stop at the bootstrap guard before Minecraft initialization. Artifact checks
+enforce module isolation, target metadata, intermediary type references, remapped Mixin
+references, assets, Java 8 bytecode and exclusion of test classes.
 
 Public guarantees and versioning policy are defined in [compatibility.md](compatibility.md).
 The Java types are internal implementation interfaces, not a separately published API.

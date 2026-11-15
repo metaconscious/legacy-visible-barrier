@@ -9,6 +9,8 @@ import subprocess
 import zipfile
 from pathlib import Path
 
+from versions import TARGETS
+
 FEATURES = {
     "legacy-fabric": {"chunkBorders", "expectHitboxes", "expectHighlights", "orthographic", "axolotlOutlines"},
     "ornithe": {"villages", "waypoints", "axolotlOutlines", "miningProgress"},
@@ -24,6 +26,7 @@ NATIVE_ASSERTIONS = {
     "startup-controls", "mode:native", "native-startup-isolation", "native-toggles-vbo-on-off",
     "resource-reload", "world-switch", "native-translucent-scene",
 }
+OFF_ASSERTIONS = {"startup-controls", "mode:off", "native-startup-isolation", "off-controls"}
 OPTION_FILES = {"options.txt", "optionsof.txt", "optionsshaders.txt"}
 
 
@@ -51,10 +54,13 @@ def validate_client(result):
     if not all(runtime.get(key) for key in ("java.version", "lwjgl", "gl.version")):
         return "Incomplete runtime identity"
     mode = result.get("render_mode", "enhanced")
-    required = (NATIVE_ASSERTIONS if mode == "native" else BASE_ASSERTIONS) | {
+    required = (OFF_ASSERTIONS if mode == "off" else NATIVE_ASSERTIONS if mode == "native" else BASE_ASSERTIONS)
+    if result.get("missing_hook"):
+        required = NATIVE_ASSERTIONS - {"native-startup-isolation"} | {"missing-hook-recovery"}
+    required = required | {
         "feature:" + p.split(".")[-1].split("=")[0] for p in result["properties"] if p.endswith("=true")
     }
-    if mode == "enhanced" and runtime.get("vao") in ("core", "arb"):
+    if mode == "enhanced" and not result.get("missing_hook") and runtime.get("vao") in ("core", "arb"):
         required.add("foreign-vao")
     if result.get("shader_pack"):
         required.add("shader-pack-active")
@@ -68,10 +74,17 @@ def is_mod(jar):
 
 
 def launch(manifest, profile, mods, java=None, properties=(), config=None, options=(), shader_pack=None,
-           render_mode="enhanced", native_refresh="dirty"):
+           render_mode="enhanced", native_refresh="dirty", missing_hook=False, runtime_manifest=None, api=None):
     data = json.loads(manifest.read_text(encoding="utf-8"))
+    if runtime_manifest:
+        runtime = json.loads(runtime_manifest.read_text(encoding="utf-8"))
+        if runtime["mapping"] == data["mapping"]:
+            raise ValueError("The negative launch needs a different mapping environment")
+        for key in ("classpath", "minecraft", "natives", "assets", "assetIndex", "jvm_args"):
+            data[key] = runtime[key]
+        data["mapping"] = runtime["mapping"]
     validate_properties(data["platform"], properties)
-    if render_mode not in ("enhanced", "native") or native_refresh not in ("dirty", "reload"):
+    if render_mode not in ("enhanced", "native", "off") or native_refresh not in ("dirty", "reload"):
         raise ValueError("Unsupported rendering mode or refresh policy")
     if any(p.name not in OPTION_FILES for p in options) or len({p.name for p in options}) != len(options):
         raise ValueError("Only distinct Minecraft options files may be supplied")
@@ -98,18 +111,24 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
     settings_before = configurations(profile)
 
     installed = []
-    for jar in map(Path, data["mods"] + [str(p) for p in mods]):
+    baseline = list(map(Path, data["mods"]))
+    for jar in baseline + list(mods) + ([api] if api else []):
         if jar.name.startswith("fabric-loader-") or (not is_mod(jar) and jar not in mods):
             continue
+        with zipfile.ZipFile(jar) as archive:
+            metadata = json.loads(archive.read("fabric.mod.json")) if "fabric.mod.json" in archive.namelist() else {}
+        if api and jar in baseline and metadata.get("id") not in ("lvb", "lvb_smoke"):
+            continue
+        if runtime_manifest:
+            if metadata.get("id") == "lvb_smoke":
+                continue
         destination = mod_dir / jar.name
         if destination.exists():
             raise ValueError(f"Duplicate mod filename: {jar.name}")
         shutil.copyfile(jar, destination)
         identity = {"file": jar.name, "sha256": digest(jar)}
-        with zipfile.ZipFile(jar) as archive:
-            if "fabric.mod.json" in archive.namelist():
-                metadata = json.loads(archive.read("fabric.mod.json"))
-                identity.update(id=metadata["id"], version=metadata["version"])
+        if metadata:
+            identity.update(id=metadata["id"], version=metadata["version"])
         installed.append(identity)
 
     for jar in data["natives"]:
@@ -132,15 +151,17 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
     executable = str(Path(java).resolve()) if java and os.path.dirname(java) else java or data["java"]
     command = [executable, "-Xmx1G", f"-Djava.library.path={native_dir}",
                f"-Dorg.lwjgl.librarypath={native_dir}", "-Dfabric.disableErrorGui=true",
-               "-Dfabric.development=false", "-Dlog4j2.formatMsgNoLookups=true",
+               "-Dfabric.development=false", "-Dlog4j2.formatMsgNoLookups=true", *data.get("jvm_args", []),
                f"-Dlvb.smoke.report={report}", f"-Dlvb.renderMode={render_mode}",
                f"-Dlvb.nativeRefresh={native_refresh}", *[f"-D{p}" for p in properties],
+               *(["-Dlvb.smoke.missingHook=true"] if missing_hook else []),
                *([f"-Dlvb.smoke.shaderPack={shader_pack.name}"] if shader_pack else []),
                "-cp", os.pathsep.join(classpath), "net.fabricmc.loader.impl.launch.knot.KnotClient",
                "--version", "1.8.9", "--gameDir", str(profile), "--assetsDir", data["assets"],
                "--assetIndex", data["assetIndex"], "--accessToken", "0", "--username", "LVBTest",
                "--userProperties", "{}"]
     result = {"schema": 1, "platform": data["platform"], "java": command[0], "mods": installed,
+              "target": data.get("target", data["platform"]), "missing_hook": missing_hook,
               "mapping": data["mapping"], "version": data["version"],
               "runtime_artifacts": [{"file": Path(p).name, "sha256": digest(Path(p))}
                                     for p in classpath + data["natives"]],
@@ -157,6 +178,18 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
             result["failure"] = "Client exceeded 240 seconds"
     result["report"] = report.read_text(encoding="utf-8").strip() if report.exists() else ""
     result["configuration_after"] = configurations(profile)
+    if runtime_manifest:
+        diagnostic = "LVB mapping generation mismatch: this JAR requires "
+        output = (profile / "console.log").read_text(encoding="utf-8", errors="replace")
+        result["passed"] = (result["exit_code"] not in (0, -1) and diagnostic in output
+                            and "MixinInitialisationError" in output
+                            and "Failed to select mixin config" not in output
+                            and "ClassNotFoundException: net.minecraft" not in output
+                            and "[LWJGL]" not in output and not report.exists())
+        result["assertions"] = ["wrong-generation-rejected"] if result["passed"] else []
+        (profile / "result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        print(f"{'PASS' if result['passed'] else 'FAIL'}: generation guard ({profile / 'result.json'})")
+        return 0 if result["passed"] else 1
     client_report = profile / "client.json"
     try:
         result["client"] = json.loads(client_report.read_text(encoding="utf-8")) if client_report.exists() else {}
@@ -173,29 +206,34 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("platform", choices=("legacy-fabric", "ornithe"))
+    parser.add_argument("platform", choices=TARGETS)
     parser.add_argument("--profile", type=Path, required=True, help="New directory for this run")
     parser.add_argument("--mod", type=Path, action="append", default=[], help="Published mod JAR; repeat as needed")
+    parser.add_argument("--api", type=Path, help="Published API distribution replacing the baseline API modules")
     parser.add_argument("--config", type=Path, help="Directory of mod configurations to copy")
     parser.add_argument("--options", type=Path, action="append", default=[], help="Minecraft options file; repeat as needed")
     parser.add_argument("--java", help="Java executable; defaults to the build's Java 8 launcher")
     parser.add_argument("--shader-pack", type=Path, help="Shader ZIP to install, select and verify with OptiFine")
     parser.add_argument("--property", action="append", default=[], help="Optional lvb.smoke feature assertion")
-    parser.add_argument("--render-mode", choices=("enhanced", "native"), default="enhanced")
+    parser.add_argument("--render-mode", choices=("enhanced", "native", "off"), default="enhanced")
+    parser.add_argument("--missing-hook", action="store_true", help="Exercise the competing terrain hook fixture")
+    parser.add_argument("--reject-runtime", type=Path, help="Launch against another target's manifest; require generation rejection")
     parser.add_argument("--native-refresh", choices=("dirty", "reload"), default="dirty")
     args = parser.parse_args()
     try:
-        validate_properties(args.platform, args.property)
+        validate_properties(TARGETS[args.platform]["platform"], args.property)
     except ValueError as failure:
         parser.error(str(failure))
     if args.profile.exists():
         parser.error("The profile directory already exists; choose a fresh directory")
     root = Path(__file__).resolve().parents[1]
-    manifest = root / args.platform / "build/mod-compatibility/launch.json"
+    target = TARGETS[args.platform]
+    manifest = root / target["platform"] / target["build_directory"] / "mod-compatibility/launch.json"
     return launch(manifest, args.profile.resolve(), [p.resolve() for p in args.mod],
                   args.java, args.property, args.config.resolve() if args.config else None,
                   [p.resolve() for p in args.options], args.shader_pack.resolve() if args.shader_pack else None,
-                  args.render_mode, args.native_refresh)
+                  args.render_mode, args.native_refresh, args.missing_hook, args.reject_runtime,
+                  args.api.resolve() if args.api else None)
 
 
 if __name__ == "__main__":

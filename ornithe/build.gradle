@@ -1,10 +1,15 @@
 plugins {
-    id 'fabric-loom'
+    id 'net.fabricmc.fabric-loom-remap'
     id 'ploceus'
     id 'lvb.adapter-conventions'
 }
 
-ploceus { generation.set(1) }
+ploceus { setIntermediaryGeneration(target.generation as int) }
+
+sourceSets {
+    main.java.srcDir "src/gen${target.generation}/java"
+    smokeTest.java.srcDir "src/gen${target.generation}SmokeTest/java"
+}
 
 repositories {
     exclusiveContent {
@@ -15,15 +20,10 @@ repositories {
 
 dependencies {
     minecraft "com.mojang:minecraft:${minecraft_version}"
-    mappings ploceus.featherMappings(ornithe_feather_build)
-    modImplementation "net.fabricmc:fabric-loader:${ornithe_loader_version}"
-    modImplementation "net.ornithemc.osl:core:${osl_core_version}"
-    modImplementation "net.ornithemc.osl:keybinds:${osl_keybinds_version}"
-    modImplementation "net.ornithemc.osl:lifecycle-events:${osl_lifecycle_version}"
-    modRuntimeOnly "net.ornithemc.osl:entrypoints:${osl_entrypoints_version}"
-    modRuntimeOnly "net.ornithemc.osl:resource-loader:${osl_resources_version}"
-}
-
-loom {
-    mixin { defaultRefmapName = 'lvb-ornithe.refmap.json' }
+    mappings ploceus.featherMappings(target.mapping_build.toString())
+    modImplementation "net.fabricmc:fabric-loader:${target.loader_version}"
+    target.api_modules.each { module, moduleVersion ->
+        add(target.runtime_modules.contains(module) ? 'modRuntimeOnly' : 'modImplementation',
+                "${target.api_group}:${module}:${moduleVersion}")
+    }
 }

@@ -86,6 +86,9 @@ public final class ClientSmokeTest implements ClientModInitializer {
             SmokeTestReport.record("startup-controls");
             testingWorld = true;
             SmokeTestReport.record("mode:" + RenderingPlugin.state().mode.name().toLowerCase(java.util.Locale.ROOT));
+            String expectedMode = System.getProperty("lvb.smoke.expectedMode");
+            require(expectedMode == null || RenderingPlugin.state().mode.name().equalsIgnoreCase(expectedMode),
+                    "Unexpected rendering mode: " + RenderingPlugin.state().mode);
             if (RenderingPlugin.enhanced()) {
                 BARRIERS = new BarrierRenderer();
                 verifyWorld(client);

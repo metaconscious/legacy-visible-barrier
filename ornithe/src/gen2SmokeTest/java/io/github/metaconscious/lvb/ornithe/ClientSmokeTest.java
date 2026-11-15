@@ -1,6 +1,6 @@
 package io.github.metaconscious.lvb.ornithe;
 
-import com.mojang.blaze3d.platform.GlStateManager;
+import net.minecraft.client.render.platform.GlStateManager;
 import io.github.metaconscious.lvb.core.RenderingPolicy;
 import net.fabricmc.api.ClientModInitializer;
 import net.ornithemc.osl.lifecycle.api.client.MinecraftClientEvents;
@@ -10,10 +10,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.network.handler.ClientPlayNetworkHandler;
 import net.minecraft.client.ClientPlayerInteractionManager;
 import net.minecraft.client.options.KeyBinding;
-import com.mojang.blaze3d.vertex.BufferBuilder;
+import net.minecraft.client.render.vertex.BufferBuilder;
 import net.minecraft.client.render.block.BlockLayer;
-import com.mojang.blaze3d.vertex.Tessellator;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import net.minecraft.client.render.vertex.Tesselator;
+import net.minecraft.client.render.vertex.DefaultVertexFormat;
 import net.minecraft.client.render.block.BlockRenderDispatcher;
 import net.minecraft.client.render.texture.TextureAtlas;
 import net.minecraft.client.world.ClientWorld;
@@ -78,7 +78,7 @@ public final class ClientSmokeTest implements ClientModInitializer {
                 require("key.category.legacy_visible_barriers".equals(binding.getCategory()), "Control category changed");
                 if (RenderingPlugin.state().available()) require(Blocks.BARRIER.getRenderLayer() == BlockLayer.TRANSLUCENT, "Barrier must be translucent");
                 Class.forName(net.minecraft.client.entity.particle.BarrierParticle.class.getName());
-                Class.forName(net.minecraft.client.resource.model.BlockModels.class.getName());
+                Class.forName(net.minecraft.client.resource.model.BlockModelDefinitions.class.getName());
                 KeyBinding.click(binding.getKeyCode());
                 return;
             }
@@ -86,6 +86,9 @@ public final class ClientSmokeTest implements ClientModInitializer {
             SmokeTestReport.record("startup-controls");
             testingWorld = true;
             SmokeTestReport.record("mode:" + RenderingPlugin.state().mode.name().toLowerCase(java.util.Locale.ROOT));
+            String expectedMode = System.getProperty("lvb.smoke.expectedMode");
+            require(expectedMode == null || RenderingPlugin.state().mode.name().equalsIgnoreCase(expectedMode),
+                    "Unexpected rendering mode: " + RenderingPlugin.state().mode);
             if (RenderingPlugin.enhanced()) {
                 BARRIERS = new BarrierRenderer();
                 verifyWorld(client);
@@ -145,16 +148,16 @@ public final class ClientSmokeTest implements ClientModInitializer {
         client.world.setBlockState(SECOND, Blocks.BARRIER.defaultState(), 2);
         frame(client, 3, 64);
 
-        cache(client).generateChunk(1, 0);
+        cache(client).loadChunk(1, 0);
         BlockPos edge = new BlockPos(15, 64, 0);
         BlockPos neighbor = new BlockPos(16, 64, 0);
         client.world.setBlockState(edge, Blocks.BARRIER.defaultState(), 2);
         client.world.setBlockState(neighbor, Blocks.BARRIER.defaultState(), 2);
-        client.player.x = client.player.prevTickX = 16;
+        client.player.x = client.player.prevX = 16;
         frame(client, 2, 40);
         client.world.setBlockState(edge, Blocks.AIR.defaultState(), 2);
         client.world.setBlockState(neighbor, Blocks.AIR.defaultState(), 2);
-        client.player.x = client.player.prevTickX = 1.5;
+        client.player.x = client.player.prevX = 1.5;
         BlockPos behindCamera = new BlockPos(0, 64, 8);
         client.world.setBlockState(behindCamera, Blocks.BARRIER.defaultState(), 2);
         frame(client, 3, 64);
@@ -169,9 +172,9 @@ public final class ClientSmokeTest implements ClientModInitializer {
         replacement.setBlockState(SECOND, Blocks.AIR.defaultState());
         applyPacket(client.world.getChunkAt(0, 0), new WorldChunkS2CPacket(replacement, false, 1 << 4));
         frame(client, 1, 24);
-        client.player.y = client.player.prevTickY = 80.5;
+        client.player.y = client.player.prevY = 80.5;
         frame(client, 1, 24);
-        client.player.y = client.player.prevTickY = 64.5;
+        client.player.y = client.player.prevY = 64.5;
         cache(client).unloadChunk(0, -1);
         frame(client, 0, 0);
         cache(client).unloadChunk(0, 0);
@@ -271,8 +274,8 @@ public final class ClientSmokeTest implements ClientModInitializer {
     }
 
     static void awaitNativeTerrain(Minecraft client, boolean visible) {
-        client.player.yaw = client.player.prevYaw = 180;
-        client.player.pitch = client.player.prevPitch = 20;
+        client.player.yaw = client.player.lastYaw = 180;
+        client.player.pitch = client.player.lastPitch = 20;
         long deadline = System.nanoTime() + 5_000_000_000L;
         do {
             client.gameRenderer.renderWorld(1, System.nanoTime() + 100_000_000L);
@@ -319,14 +322,19 @@ public final class ClientSmokeTest implements ClientModInitializer {
 
     private void openWorld(Minecraft client) {
         ClientPlayNetworkHandler network = new ClientPlayNetworkHandler(client, null,
-                new Connection(PacketFlow.CLIENTBOUND), client.getSession().getProfile());
+                new Connection(PacketFlow.CLIENTBOUND) {
+                    @Override
+                    public java.net.SocketAddress getAddress() {
+                        return new java.net.InetSocketAddress("127.0.0.1", 25565);
+                    }
+                }, client.getSession().getProfile());
         client.world = new ClientWorld(network, new WorldSettings(0L, WorldSettings.GameMode.CREATIVE,
                 false, false, WorldGeneratorType.DEFAULT), 0, Difficulty.PEACEFUL, client.profiler);
         client.player = new LocalClientPlayerEntity(client, client.world, network, new PlayerStats());
         client.interactionManager = new ClientPlayerInteractionManager(client, network);
-        client.player.x = client.player.prevTickX = 1.5;
-        client.player.y = client.player.prevTickY = 64.5;
-        client.player.z = client.player.prevTickZ = 4;
+        client.player.x = client.player.prevX = 1.5;
+        client.player.y = client.player.prevY = 64.5;
+        client.player.z = client.player.prevZ = 4;
         client.options.viewDistance = 2;
         client.setCamera(client.player);
         client.worldRenderer.setWorld(client.world);
@@ -338,8 +346,8 @@ public final class ClientSmokeTest implements ClientModInitializer {
     }
 
     private static void populate(Minecraft client) {
-        cache(client).generateChunk(0, 0);
-        cache(client).generateChunk(0, -1);
+        cache(client).loadChunk(0, 0);
+        cache(client).loadChunk(0, -1);
         client.world.setBlockState(FIRST, Blocks.BARRIER.defaultState(), 2);
         client.world.setBlockState(SECOND, Blocks.BARRIER.defaultState(), 2);
         client.world.setBlockState(STONE, Blocks.STONE.defaultState(), 2);
@@ -392,11 +400,11 @@ public final class ClientSmokeTest implements ClientModInitializer {
         GlStateManager.color4f(1, 1, 1, 1);
         client.getTextureManager().bind(TextureAtlas.BLOCKS_LOCATION);
         BlockRenderDispatcher models = client.getBlockRenderDispatcher();
-        Tessellator terrain = new Tessellator(4096);
-        BufferBuilder buffer = terrain.getBuilder();
+        Tesselator terrain = new Tesselator(4096);
+        BufferBuilder buffer = terrain.getBuffer();
         buffer.begin(GL11.GL_QUADS, DefaultVertexFormat.BLOCK);
         buffer.offset(-client.player.x, -client.player.y, -client.player.z);
-        models.tessellate(Blocks.STONE.defaultState(), STONE, client.world, buffer);
+        models.render(Blocks.STONE.defaultState(), STONE, client.world, buffer);
         terrain.end();
         GlStateManager.enableBlend();
         GlStateManager.blendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
@@ -414,7 +422,7 @@ public final class ClientSmokeTest implements ClientModInitializer {
                 buffer.offset(-client.player.x, -client.player.y, -client.player.z);
             }
             for (BlockPos pos : neighbors) {
-                models.tessellate(client.world.getBlockState(pos), pos, client.world, buffer);
+                models.render(client.world.getBlockState(pos), pos, client.world, buffer);
             }
             try {
                 if (Boolean.TRUE.equals(BufferBuilder.class.getMethod("isMultiTexture").invoke(buffer))) {
@@ -457,7 +465,7 @@ public final class ClientSmokeTest implements ClientModInitializer {
                 buffer.begin(GL11.GL_QUADS, DefaultVertexFormat.BLOCK);
                 buffer.offset(-client.player.x, -client.player.y, -client.player.z);
                 for (BlockPos pos : new BlockPos[]{FIRST, SECOND, OCCLUDED}) {
-                    models.tessellate(Blocks.BARRIER.defaultState(), pos, client.world, buffer);
+                    models.render(Blocks.BARRIER.defaultState(), pos, client.world, buffer);
                 }
                 buffer.offset(0, 0, 0);
                 buffer.sortQuads(0, 0, 0);
@@ -485,8 +493,8 @@ public final class ClientSmokeTest implements ClientModInitializer {
     }
 
     private static void verifyFrameHook(Minecraft client, boolean hasBarriers) {
-        client.player.yaw = client.player.prevYaw = 180;
-        client.player.pitch = client.player.prevPitch = 20;
+        client.player.yaw = client.player.lastYaw = 180;
+        client.player.pitch = client.player.lastPitch = 20;
         boolean previousAnaglyph = client.options.anaglyph;
         try {
             // Exercise each hook behavior once; the pixel fixture covers both terrain backends.

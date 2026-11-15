@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from release import check_existing, check_github_release, load_manifest, preflight, publish, publish_modrinth
+from release import check_existing, check_github_release, load_manifest, metadata_for, preflight, publish, publish_modrinth
 from versions import PROJECT_ID, TARGETS
 
 
@@ -18,12 +18,7 @@ def record(target):
     data = b"verified-test-artifact"
     return {"target": target, "filename": f"legacy-visible-barrier-1.2.0+{target}.jar",
             "sha512": hashlib.sha512(data).hexdigest(), "size": len(data),
-            "metadata": {"project_id": PROJECT_ID, "name": f"1.2.0 — {TARGETS[target]['name']}",
-                         "version_number": f"1.2.0+{target}", "version_type": "release",
-                         "game_versions": ["1.8.9"], "loaders": [target], "featured": False,
-                         "changelog": "- Unified build.",
-                         "dependencies": [{"project_id": TARGETS[target]["dependency"],
-                                           "dependency_type": "required"}]}}
+            "metadata": metadata_for("1.2.0", target, "- Unified build.", "Gen2Fixture")}
 
 
 def published(artifact):
@@ -41,7 +36,7 @@ class FakeModrinth:
         self.created = []
         self.timeout_after_upload = timeout_after_upload
 
-    def versions(self):
+    def versions(self, records=None):
         return self.existing
 
     def create(self, artifact, directory):
@@ -125,23 +120,23 @@ class PublicationTests(unittest.TestCase):
     def setUp(self):
         self.records = [record(target) for target in TARGETS]
 
-    def test_new_release_has_two_missing_targets(self):
+    def test_new_release_has_all_targets_missing(self):
         self.assertEqual({}, preflight(self.records, []))
 
     def test_matching_existing_artifact_is_complete(self):
         self.assertEqual({"legacy-fabric": "id-legacy-fabric"},
                          preflight(self.records, [published(self.records[0])]))
 
-    def test_both_variants_publish_as_separate_records(self):
+    def test_variants_publish_as_separate_records(self):
         client = FakeModrinth()
         result = publish_modrinth(client, self.records, Path("."), preflight(self.records, client.versions()))
-        self.assertEqual({"legacy-fabric", "ornithe"}, set(result))
-        self.assertEqual(["legacy-fabric", "ornithe"], client.created)
+        self.assertEqual(set(TARGETS), set(result))
+        self.assertEqual(list(TARGETS), client.created)
 
     def test_partial_release_retries_only_the_missing_target(self):
         client = FakeModrinth([published(self.records[0])])
         publish_modrinth(client, self.records, Path("."), preflight(self.records, client.versions()))
-        self.assertEqual(["ornithe"], client.created)
+        self.assertEqual(["ornithe", "ornithe.gen2"], client.created)
 
     def test_complete_release_retry_uploads_nothing(self):
         client = FakeModrinth([published(v) for v in self.records])
@@ -204,8 +199,8 @@ class PublicationTests(unittest.TestCase):
     def test_uncertain_response_is_reconciled_without_duplicate_upload(self):
         client = FakeModrinth(timeout_after_upload=True)
         result = publish_modrinth(client, self.records, Path("."), {})
-        self.assertEqual({"legacy-fabric", "ornithe"}, set(result))
-        self.assertEqual(["legacy-fabric", "ornithe"], client.created)
+        self.assertEqual(set(TARGETS), set(result))
+        self.assertEqual(list(TARGETS), client.created)
 
     def test_manifest_checks_the_actual_artifact_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -230,8 +225,8 @@ class PublicationTests(unittest.TestCase):
                   redirect_stdout(io.StringIO())):
                 publish(manifest_path)
             self.assertEqual(0, github.created)
-            self.assertEqual([self.records[1]["filename"], "release.json", "SHA512SUMS"], github.uploaded)
-            self.assertEqual(["ornithe"], modrinth.created)
+            self.assertEqual([r["filename"] for r in self.records[1:]] + ["release.json", "SHA512SUMS"], github.uploaded)
+            self.assertEqual(["ornithe", "ornithe.gen2"], modrinth.created)
             self.assertEqual(1, github.published)
             self.assertFalse(github.existing["draft"])
             for name, data in github.files.items():
@@ -249,7 +244,24 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual(1, github.created)
             self.assertEqual(1, github.published)
             self.assertEqual([r["filename"] for r in self.records] + ["release.json", "SHA512SUMS"], github.uploaded)
-            self.assertEqual(["legacy-fabric", "ornithe"], modrinth.created)
+            self.assertEqual(list(TARGETS), modrinth.created)
+
+    def test_generation_routes_and_dependencies_are_explicit(self):
+        gen1, gen2 = self.records[1]["metadata"], self.records[2]["metadata"]
+        self.assertEqual(["ornithe"], gen2["loaders"])
+        self.assertNotEqual(gen1["project_id"], gen2["project_id"])
+        self.assertEqual("wbCVLcP4", gen1["dependencies"][0]["version_id"])
+        self.assertEqual("PSPwlyvh", gen2["dependencies"][0]["version_id"])
+        with self.assertRaisesRegex(ValueError, "distinct Modrinth"):
+            metadata_for("1.3.0", "ornithe.gen2", "Changes", PROJECT_ID)
+        self.records[2]["metadata"]["project_id"] = None
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_manifest(Path(directory), self.records)
+            with patch("release.gh") as github, patch("release.Modrinth") as modrinth:
+                with self.assertRaisesRegex(ValueError, "MODRINTH_GEN2_PROJECT_ID"):
+                    publish(path)
+                github.assert_not_called()
+                modrinth.assert_not_called()
 
     def test_duplicate_github_tags_fail_before_any_publication(self):
         with tempfile.TemporaryDirectory() as directory:

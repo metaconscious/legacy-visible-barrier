@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -13,7 +14,7 @@ import uuid
 from pathlib import Path
 
 from versions import (GAME_VERSION, PROJECT_ID, TARGETS, artifact_version, changelog_entry,
-                      release_channel, validate_tag)
+                      release_channel, target_paths, validate_tag)
 
 ROOT = Path(__file__).resolve().parent.parent
 REPOSITORY = "metaconscious/legacy-visible-barrier"
@@ -21,6 +22,21 @@ REPOSITORY = "metaconscious/legacy-visible-barrier"
 
 def digest(path):
     return hashlib.sha512(path.read_bytes()).hexdigest()
+
+
+def metadata_for(base, target, changelog, gen2_project=None):
+    info = TARGETS[target]
+    project = info.get("modrinth_project", gen2_project or None)
+    if "modrinth_project_env" in info and project is not None:
+        if project == PROJECT_ID or not re.fullmatch(r"[A-Za-z0-9]+", project):
+            raise ValueError("Ornithe Gen2 needs a distinct Modrinth project ID")
+    dependency = {"project_id": info["dependency"], "dependency_type": "required"}
+    if info.get("dependency_version"):
+        dependency["version_id"] = info["dependency_version"]
+    return {"project_id": project, "name": f"{base} — {info['name']}",
+            "version_number": artifact_version(base, target), "version_type": release_channel(base),
+            "game_versions": [GAME_VERSION], "loaders": [info["platform"]],
+            "changelog": changelog, "featured": False, "dependencies": [dependency]}
 
 
 def stage(base, report_path, jars, output, tag=None):
@@ -33,7 +49,7 @@ def stage(base, report_path, jars, output, tag=None):
     changelog = changelog_entry(ROOT / "CHANGELOG.md", base)
     reports = {r["target"]: r for r in json.loads(report_path.read_text(encoding="utf-8"))}
     if set(reports) != set(TARGETS) or set(jars) != set(TARGETS):
-        raise ValueError("Both distributions must pass artifact verification")
+        raise ValueError("All distributions must pass artifact verification")
     output.mkdir(parents=True, exist_ok=True)
     versions = []
     for target, info in TARGETS.items():
@@ -44,12 +60,7 @@ def stage(base, report_path, jars, output, tag=None):
         shutil.copyfile(jar, output / jar.name)
         versions.append({
             "target": target, "filename": jar.name, "sha512": report["sha512"], "size": report["size"],
-            "metadata": {
-                "project_id": PROJECT_ID, "name": f"{base} — {info['name']}", "version_number": version,
-                "version_type": release_channel(base), "game_versions": [GAME_VERSION], "loaders": [target],
-                "changelog": changelog, "featured": False,
-                "dependencies": [{"project_id": info["dependency"], "dependency_type": "required"}],
-            },
+            "metadata": metadata_for(base, target, changelog, os.environ.get(info.get("modrinth_project_env", ""))),
         })
     manifest = {"schema": 1, "repository": REPOSITORY, "version": base, "tag": f"v{base}",
                 "commit": commit, "changelog": changelog, "versions": versions}
@@ -65,20 +76,14 @@ def load_manifest(path):
     if manifest["schema"] != 1 or manifest["repository"] != REPOSITORY:
         raise ValueError("Unexpected release manifest")
     records = manifest["versions"]
-    if len(records) != 2 or {v["target"] for v in records} != set(TARGETS):
+    if len(records) != len(TARGETS) or {v["target"] for v in records} != set(TARGETS):
         raise ValueError("A release must contain exactly one artifact per target")
     for record in records:
         target, metadata = record["target"], record["metadata"]
         version = artifact_version(manifest["version"], target)
         if record["filename"] != f"legacy-visible-barrier-{version}.jar":
             raise ValueError("Unexpected distribution filename")
-        expected = {
-            "project_id": PROJECT_ID, "name": f"{manifest['version']} — {TARGETS[target]['name']}",
-            "version_number": version, "version_type": release_channel(manifest["version"]),
-            "game_versions": [GAME_VERSION], "loaders": [target], "changelog": manifest["changelog"],
-            "featured": False,
-            "dependencies": [{"project_id": TARGETS[target]["dependency"], "dependency_type": "required"}],
-        }
+        expected = metadata_for(manifest["version"], target, manifest["changelog"], metadata.get("project_id"))
         if metadata != expected:
             raise ValueError(f"Unexpected release metadata: {target}")
         jar = path.parent / record["filename"]
@@ -104,8 +109,9 @@ class Modrinth:
         with urllib.request.urlopen(request, timeout=60) as response:
             return json.load(response)
 
-    def versions(self):
-        return self.request(f"project/{PROJECT_ID}/version")
+    def versions(self, records):
+        return [version for project in sorted({r["metadata"]["project_id"] for r in records})
+                for version in self.request(f"project/{project}/version")]
 
     def get(self, version_id):
         return self.request(f"version/{version_id}")
@@ -130,7 +136,7 @@ def check_existing(record, existing):
             raise ValueError(f"Published metadata differs for {metadata['version_number']}: {key}")
     dependencies = [(d.get("project_id"), d.get("version_id"), d.get("file_name"), d["dependency_type"])
                     for d in existing.get("dependencies", [])]
-    expected = [(metadata["dependencies"][0]["project_id"], None, None, "required")]
+    expected = [(d["project_id"], d.get("version_id"), None, "required") for d in metadata["dependencies"]]
     files = existing.get("files", [])
     if dependencies != expected or len(files) != 1:
         raise ValueError(f"Published files or dependencies differ for {metadata['version_number']}")
@@ -151,7 +157,8 @@ def check_github_release(manifest, release):
 def preflight(records, versions):
     completed = {}
     for record in records:
-        matches = [v for v in versions if v["version_number"] == record["metadata"]["version_number"]]
+        matches = [v for v in versions if v["version_number"] == record["metadata"]["version_number"]
+                   and v["project_id"] == record["metadata"]["project_id"]]
         if len(matches) > 1:
             raise ValueError(f"Duplicate published version: {record['metadata']['version_number']}")
         if matches:
@@ -169,7 +176,7 @@ def publish_modrinth(client, records, directory, completed):
             created = client.create(record, directory)
         except (OSError, urllib.error.URLError):
             # A timeout can occur after the server commits the upload. Reconcile before retrying.
-            reconciled = preflight(records, client.versions())
+            reconciled = preflight(records, client.versions(records))
             if target not in reconciled:
                 raise
             result.update(reconciled)
@@ -195,9 +202,11 @@ def find_github_release(tag):
 
 def publish(manifest_path):
     manifest = load_manifest(manifest_path)
+    if any(not record["metadata"]["project_id"] for record in manifest["versions"]):
+        raise ValueError("Set MODRINTH_GEN2_PROJECT_ID to a separate Gen2 project and stage the release again")
     directory, tag = manifest_path.parent, manifest["tag"]
     client = Modrinth(os.environ.get("MODRINTH_TOKEN"))
-    completed = preflight(manifest["versions"], client.versions())
+    completed = preflight(manifest["versions"], client.versions(manifest["versions"]))
     commit = json.loads(gh("api", f"repos/{REPOSITORY}/commits/{tag}"))["sha"]
     if commit != manifest["commit"]:
         raise ValueError("Release tag no longer matches the built commit")
@@ -242,8 +251,7 @@ def main():
     staging.add_argument("--report", type=Path, required=True)
     staging.add_argument("--output", type=Path, required=True)
     staging.add_argument("--tag")
-    for target in TARGETS:
-        staging.add_argument(f"--{target}", type=Path, required=True)
+    staging.add_argument("--artifact", action="append", required=True, help="TARGET=JAR; repeat for every target")
     publishing = commands.add_parser("publish")
     publishing.add_argument("manifest", type=Path)
     checking = commands.add_parser("validate-tag")
@@ -255,8 +263,7 @@ def main():
     elif args.command == "validate-tag":
         validate_tag(args.tag, args.base)
     else:
-        stage(args.base_version, args.report,
-              {target: getattr(args, target.replace("-", "_")) for target in TARGETS}, args.output, args.tag)
+        stage(args.base_version, args.report, target_paths(args.artifact), args.output, args.tag)
 
 
 if __name__ == "__main__":

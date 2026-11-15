@@ -2,7 +2,7 @@
   "required": true,
   "package": "io.github.metaconscious.lvb.ornithe.mixin",
   "compatibilityLevel": "JAVA_8",
-  "refmap": "lvb-ornithe-smoke.refmap.json",
+  "refmap": "lvb-${targetId}-smoke.refmap.json",
   "client": [
     "BlockModelRendererSmokeTestMixin",
     "WorldRendererSmokeTestMixin",

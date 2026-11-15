@@ -7,7 +7,8 @@ import zipfile
 from pathlib import Path, PureWindowsPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from verify_artifacts import verify_jar
+from verify_artifacts import verify_jar, verify_mapping_references
+from versions import runtime_dependencies, target_metadata
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = ROOT / "shared-resources/src/main/resources/assets"
@@ -50,14 +51,18 @@ class ArtifactTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.jar = Path(self.directory.name) / "legacy-visible-barrier-1.2.0+legacy-fabric.jar"
         resources = ROOT / "legacy-fabric/src/main/resources"
-        metadata = (resources / "fabric.mod.json").read_text(encoding="utf-8")
-        metadata = metadata.replace("${version}", "1.2.0+legacy-fabric").replace("${minecraftVersion}", "1.8.9")
-        config = json.loads((resources / "lvb-legacy-fabric.mixins.json").read_text(encoding="utf-8"))
+        metadata = json.loads((resources / "fabric.mod.json").read_text(encoding="utf-8"))
+        metadata.update(version="1.2.0+legacy-fabric", depends=runtime_dependencies("legacy-fabric"),
+                        custom={"lvb:target": target_metadata("legacy-fabric")})
+        metadata = json.dumps(metadata)
+        config = json.loads((resources / "lvb-legacy-fabric.mixins.json").read_text(encoding="utf-8")
+                            .replace("${targetId}", "legacy-fabric"))
         core_name = "io/github/metaconscious/lvb/core/VisibilityController"
         self.core = {core_name + ".class": empty_class(core_name)}
         self.entries = dict(self.core)
         self.entries.update({
             "LICENSE": b"CC0-1.0",
+            "META-INF/MANIFEST.MF": b"Manifest-Version: 1.0\r\nLegacy-Fabric-Intermediary-Version: 1\r\n",
             "fabric.mod.json": metadata.encode("utf-8"),
             "lvb-legacy-fabric.mixins.json": json.dumps(config).encode("utf-8"),
             config["refmap"]: b'{"mappings":{"fixture":{}}}',
@@ -98,6 +103,36 @@ class ArtifactTests(unittest.TestCase):
         self.write_jar()
         with self.assertRaisesRegex(ValueError, "Test mod files leaked"):
             verify_jar(self.jar, "legacy-fabric", "1.2.0", self.core, ASSETS)
+
+    def test_wrong_generation_cannot_be_packaged_under_a_valid_target_name(self):
+        original = dict(self.entries)
+        for entry in ("fabric.mod.json", "META-INF/MANIFEST.MF"):
+            with self.subTest(entry=entry):
+                self.entries = dict(original)
+                if entry.endswith(".json"):
+                    metadata = json.loads(self.entries[entry])
+                    metadata["custom"]["lvb:target"]["sentinels"]["ave"] = "net.minecraft.class_310"
+                    self.entries[entry] = json.dumps(metadata).encode()
+                else:
+                    self.entries[entry] = self.entries[entry].replace(b"Version: 1\r", b"Version: 2\r")
+                self.write_jar()
+                with self.assertRaisesRegex(ValueError, "(target metadata|generation) mismatch"):
+                    verify_jar(self.jar, "legacy-fabric", "1.2.0", self.core, ASSETS)
+
+    def test_mapping_check_distinguishes_types_from_source_name_strings(self):
+        mappings = Path(self.directory.name) / "mappings.tiny"
+        mappings.write_text("tiny\t2\t0\tofficial\tintermediary\nc\tave\tnet/minecraft/class_1600\n")
+        data = empty_class("net/minecraft/class_1600")
+        source_name = b"Lnet/minecraft/client/MinecraftClient;"
+        # A source-name UTF8 constant may remain in a Mixin annotation after remapping.
+        data = (data[:8] + struct.pack(">H", 6) + data[10:-14]
+                + b"\x01" + struct.pack(">H", len(source_name)) + source_name + data[-14:])
+        refmap = {"mappings": {"source": {source_name.decode(): "Lnet/minecraft/class_1600;method_1()V"}}}
+        verify_mapping_references({"fixture": data}, refmap, mappings)
+        for classes, references in (({"fixture": empty_class("net/minecraft/class_310")}, refmap),
+                                    ({"fixture": data}, {"mappings": {"source": "Lnet/minecraft/class_310;"}})):
+            with self.assertRaisesRegex(ValueError, "Unknown Minecraft mapping references"):
+                verify_mapping_references(classes, references, mappings)
 
 
 if __name__ == "__main__":

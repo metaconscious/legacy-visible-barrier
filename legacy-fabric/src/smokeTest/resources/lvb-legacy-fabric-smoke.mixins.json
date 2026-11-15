@@ -2,7 +2,7 @@
   "required": true,
   "package": "io.github.metaconscious.lvb.legacyfabric.mixin",
   "compatibilityLevel": "JAVA_8",
-  "refmap": "lvb-legacy-fabric-smoke.refmap.json",
+  "refmap": "lvb-${targetId}-smoke.refmap.json",
   "client": [
     "BlockModelRendererSmokeTestMixin",
     "WorldRendererSmokeTestMixin",

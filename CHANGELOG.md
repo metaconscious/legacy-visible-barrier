@@ -5,6 +5,12 @@ surface is defined in [docs/compatibility.md](docs/compatibility.md).
 
 ## [1.3.0] - Unreleased
 
+- Add an Ornithe Calamus Gen2 distribution alongside both existing Gen1 distributions.
+- Reject mismatched mapping generations before activating Minecraft rendering hooks.
+- Isolate generation-specific sources, dependencies, outputs and release destinations;
+  verify all three production distributions and cross-generation rejection in CI.
+- Update the build to Gradle 9.2.1, Loom 1.15.5, Legacy Looming 1.15.3 and Ploceus 1.15.9;
+  retain Java 8 mod bytecode and runtime support.
 - Eliminate toggle-triggered terrain reloads and screen flicker in enhanced mode.
 - Add native compatibility and off modes, selected before Mixin transformation. Native
   mode uses coalesced section updates, with an optional full-reload refresh policy.

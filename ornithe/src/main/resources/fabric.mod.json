@@ -25,13 +25,18 @@
     "lvb-ornithe.mixins.json"
   ],
   "depends": {
-    "fabricloader": ">=0.18.1",
+    "fabricloader": ">=${loaderMinimum}",
     "minecraft": "${minecraftVersion}",
     "java": ">=8",
-    "osl-core": ">=0.6.0",
-    "osl-entrypoints": ">=0.4.3",
-    "osl-keybinds": ">=0.1.3",
-    "osl-lifecycle-events": ">=0.5.6",
-    "osl-resource-loader": ">=0.5.4"
-  }
+    "osl-core": "${apiMinimums['osl-core']}",
+    "osl-entrypoints": "${apiMinimums['osl-entrypoints']}",
+    "osl-keybinds": "${apiMinimums['osl-keybinds']}",
+    "osl-lifecycle-events": "${apiMinimums['osl-lifecycle-events']}",
+    "osl-resource-loader": "${apiMinimums['osl-resource-loader']}"
+  },
+  "custom": {"lvb:target": {
+    "id": "${targetId}",
+    "name": "${targetName}",
+    "sentinels": {"ave": "${sentinels.ave}", "bfk": "${sentinels.bfk}"}
+  }}
 }
