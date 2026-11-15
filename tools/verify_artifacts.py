@@ -13,13 +13,48 @@ from versions import TARGETS, artifact_version, runtime_dependencies, target_met
 CORE_PACKAGE = "io/github/metaconscious/lvb/core/"
 LOCALES = {"de_DE", "en_US", "es_ES", "fr_FR", "ja_JP", "ko_KR", "ru_RU", "zh_CN", "zh_TW"}
 TRANSLATION_KEYS = {
-    "key.category.legacy_visible_barriers",
-    "key.toggle_barrier_visibility",
-    "lvb.to_visible",
-    "lvb.to_invisible",
-    "lvb.mode_native",
-    "lvb.unavailable",
-    "lvb.disabled",
+    'key.category.legacy_visible_barriers',
+    'key.toggle_barrier_visibility',
+    'lvb.to_visible',
+    'lvb.to_invisible',
+    'lvb.mode_native',
+    'lvb.unavailable',
+    'lvb.disabled',
+    'key.open_lvb_settings',
+    'lvb.settings.title',
+    'lvb.settings.active',
+    'lvb.settings.visibility',
+    'lvb.settings.backend.starting',
+    'lvb.settings.backend.enhanced',
+    'lvb.settings.backend.native',
+    'lvb.settings.backend.off',
+    'lvb.settings.backend.unavailable',
+    'lvb.settings.mode',
+    'lvb.settings.mode.auto',
+    'lvb.settings.mode.native',
+    'lvb.settings.mode.off',
+    'lvb.settings.restart',
+    'lvb.settings.mode_override',
+    'lvb.settings.refresh_override',
+    'lvb.settings.advanced',
+    'lvb.settings.refresh',
+    'lvb.settings.refresh.dirty',
+    'lvb.settings.refresh.reload',
+    'lvb.settings.refresh_help',
+    'lvb.settings.binding',
+    'lvb.settings.details',
+    'lvb.settings.save',
+    'lvb.settings.reset',
+    'lvb.settings.reload',
+    'lvb.settings.pending',
+    'lvb.settings.saving',
+    'lvb.settings.read_failed',
+    'lvb.settings.save_failed',
+    'lvb.settings.changed',
+    'lvb.settings.invalid',
+    'lvb.settings.startup_failed',
+    'lvb.settings.recovered',
+    'lvb.settings.model_failed',
 }
 
 
@@ -155,9 +190,15 @@ def verify_jar(path, target, base, core_classes, assets, mappings=None):
         require(metadata["license"] == "CC0-1.0", "License metadata changed")
         require(metadata["icon"] == "assets/lvb/icon.png", "Icon path changed")
         require(metadata["entrypoints"] == {
-            "client": [f"io.github.metaconscious.lvb.{package}.{entrypoint}"]
+            "client": [f"io.github.metaconscious.lvb.{package}.{entrypoint}"],
+            "modmenu": [f"io.github.metaconscious.lvb.{package}.ModMenuIntegration"]
         }, "Unexpected entrypoints")
         require(adapter_package + entrypoint + ".class" in classes, "Entrypoint class is missing")
+        require(adapter_package + "ModMenuIntegration.class" in classes, "Optional menu entrypoint is missing")
+        require(metadata.get("suggests") == {"modmenu": ">=" + TARGETS[target]["mod_menu"]["minimum"]},
+                "Optional menu dependency contract changed")
+        require(metadata.get("breaks", {}) == ({"modmenu": ["0.1.0", "1.0.0"]} if target == "legacy-fabric" else {}),
+                "Known menu incompatibility contract changed")
         require(metadata["depends"] == runtime_dependencies(target), "Runtime dependency contract changed")
         require(metadata.get("custom", {}).get("lvb:target") == target_metadata(target), "Mapping target metadata mismatch")
         manifest = jar.read("META-INF/MANIFEST.MF").decode("utf-8").replace("\r\n ", "")

@@ -40,6 +40,7 @@ public class RenderingPolicyTest {
         assertTrue(policy.decision().nativeVisible());
         assertTrue(policy.takeNativeRefresh());
         assertTrue(policy.state().nativeVisible());
+        assertEquals(Failure.ENHANCED, policy.state().failure);
         assertFalse(policy.fail(Failure.ENHANCED));
         assertFalse(policy.takeNativeRefresh());
         assertTrue(policy.fail(Failure.MODEL));
@@ -47,6 +48,7 @@ public class RenderingPolicyTest {
         assertTrue(policy.takeNativeRefresh());
         assertFalse(policy.state().visible());
         assertTrue(policy.state().requestedVisible);
+        assertEquals(Failure.MODEL, policy.state().failure);
         assertFalse(policy.fail(Failure.ENHANCED));
         assertFalse(policy.fail(Failure.MODEL));
     }

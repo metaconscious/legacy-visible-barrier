@@ -11,6 +11,7 @@ configurations.configureEach {
 }
 
 configurations {
+    menuTestMods { canBeConsumed = false; transitive = false }
     bundledCore {
         canBeConsumed = false
         transitive = false
@@ -33,7 +34,16 @@ configurations {
 
 artifacts { productionJarElements tasks.named('remapJar') }
 
+repositories {
+    maven {
+        url = target.platform == 'legacy-fabric' ? 'https://api.modrinth.com/maven' : 'https://maven.ornithemc.net/releases/'
+        content { includeGroup(target.platform == 'legacy-fabric' ? 'maven.modrinth' : 'com.terraformersmc') }
+    }
+}
+
 dependencies {
+    modCompileOnly(target.mod_menu.coordinate) { transitive = false }
+    menuTestMods(target.mod_menu.coordinate) { transitive = false }
     implementation project(':core')
     bundledCore project(':core')
     sharedResources project(path: ':shared-resources', configuration: 'resourceElements')
@@ -62,7 +72,7 @@ tasks.named('processResources', ProcessResources) {
     filesMatching('fabric.mod.json') {
         expand version: project.version,
                 minecraftVersion: providers.gradleProperty('minecraft_version').get(),
-                loaderMinimum: target.loader_minimum,
+                loaderMinimum: target.loader_minimum, modMenuMinimum: target.mod_menu.minimum,
                 apiMinimums: apiDependencies,
                 targetId: targetId, targetName: target.name, sentinels: target.sentinels
     }

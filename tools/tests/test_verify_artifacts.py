@@ -8,7 +8,7 @@ from pathlib import Path, PureWindowsPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from verify_artifacts import verify_jar, verify_mapping_references
-from versions import runtime_dependencies, target_metadata
+from versions import TARGETS, runtime_dependencies, target_metadata
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = ROOT / "shared-resources/src/main/resources/assets"
@@ -53,7 +53,8 @@ class ArtifactTests(unittest.TestCase):
         resources = ROOT / "legacy-fabric/src/main/resources"
         metadata = json.loads((resources / "fabric.mod.json").read_text(encoding="utf-8"))
         metadata.update(version="1.2.0+legacy-fabric", depends=runtime_dependencies("legacy-fabric"),
-                        custom={"lvb:target": target_metadata("legacy-fabric")})
+                        custom={"lvb:target": target_metadata("legacy-fabric")},
+                        suggests={"modmenu": ">=" + TARGETS["legacy-fabric"]["mod_menu"]["minimum"]})
         metadata = json.dumps(metadata)
         config = json.loads((resources / "lvb-legacy-fabric.mixins.json").read_text(encoding="utf-8")
                             .replace("${targetId}", "legacy-fabric"))
@@ -68,7 +69,7 @@ class ArtifactTests(unittest.TestCase):
             config["refmap"]: b'{"mappings":{"fixture":{}}}',
         })
         entrypoint = json.loads(metadata)["entrypoints"]["client"][0].replace(".", "/")
-        for name in [entrypoint, config["plugin"].replace(".", "/")] + [config["package"].replace(".", "/") + "/" + mixin for mixin in config["client"]]:
+        for name in [entrypoint, "io/github/metaconscious/lvb/legacyfabric/ModMenuIntegration", config["plugin"].replace(".", "/")] + [config["package"].replace(".", "/") + "/" + mixin for mixin in config["client"]]:
             self.entries[name + ".class"] = empty_class(name)
         for path in ASSETS.rglob("*"):
             if path.is_file():

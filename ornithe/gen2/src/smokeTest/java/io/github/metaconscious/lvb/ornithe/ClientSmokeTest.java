@@ -67,12 +67,18 @@ public final class ClientSmokeTest implements ClientModInitializer {
             if (binding == null) {
                 new OrnitheClient().onInitializeClient();
                 int count = 0;
+                int settingsCount = 0;
                 for (KeyBinding key : client.options.keyBindings) {
                     if ("key.toggle_barrier_visibility".equals(key.getName())) {
                         binding = key;
                         count++;
                     }
+                    if ("key.open_lvb_settings".equals(key.getName())) {
+                        settingsCount++;
+                        require(key.getDefaultKeyCode() == Keyboard.KEY_NONE, "Settings must start unbound");
+                    }
                 }
+                require(settingsCount == 1, "Exactly one settings control must be registered");
                 require(count == 1, "Exactly one toggle control must be registered");
                 require(binding.getDefaultKeyCode() == Keyboard.KEY_B, "Default control must be B");
                 require("key.category.legacy_visible_barriers".equals(binding.getCategory()), "Control category changed");
@@ -85,6 +91,7 @@ public final class ClientSmokeTest implements ClientModInitializer {
             require(!binding.consumeClick(), "Queued input outside a world must be consumed");
             SmokeTestReport.record("startup-controls");
             testingWorld = true;
+            SettingsSmokeTest.verify(client);
             SmokeTestReport.record("mode:" + RenderingPlugin.state().mode.name().toLowerCase(java.util.Locale.ROOT));
             String expectedMode = System.getProperty("lvb.smoke.expectedMode");
             require(expectedMode == null || RenderingPlugin.state().mode.name().equalsIgnoreCase(expectedMode),
@@ -96,6 +103,7 @@ public final class ClientSmokeTest implements ClientModInitializer {
             } else {
                 verifyNative(client);
             }
+            SettingsSmokeTest.verifyRuntime(client);
             Path report = Paths.get(System.getProperty("lvb.smoke.report"));
             Files.createDirectories(report.getParent());
             SmokeTestReport.write(report);

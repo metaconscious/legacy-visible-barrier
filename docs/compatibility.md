@@ -47,8 +47,8 @@ ownership contracts are in [architecture.md](architecture.md).
 
 ### Rendering modes
 
-Create `config/lvb.properties` in the Minecraft instance to select a mode. Changes take
-effect after restarting the client. The defaults are:
+Use the settings screen or edit `config/lvb.properties` in the Minecraft instance to
+select a mode. Changes take effect after restarting the client. The defaults are:
 
 ```properties
 renderMode=auto
@@ -90,6 +90,35 @@ independently of LVB's rendering mode.
 JVM properties `-Dlvb.renderMode=native` and `-Dlvb.nativeRefresh=reload` override the
 corresponding file settings. An unreadable or invalid configuration selects native mode
 with dirty refresh and records the configuration error in the game log.
+
+### Mod Menu
+
+The settings screen is available through a matching Mod Menu's configuration button,
+or an independently rebindable **Open LVB Settings** control. Mod Menu is optional.
+The UI labels `auto` and its existing `enhanced` alias as **Automatic**, `native` as
+**Compatibility**, and `off` as **Disabled**. An unrelated edit preserves an existing
+`enhanced` file value.
+
+| Distribution | Tested Mod Menu | API/runtime profile |
+| --- | --- | --- |
+| Legacy Fabric Gen1 | [Legacy Mod Menu 1.1.0](https://modrinth.com/mod/legacy-mod-menu/version/r7PigOJk) | Legacy Fabric API baseline |
+| Ornithe Gen1 | [0.3.1+mc1.8.9](https://modrinth.com/mod/modmenu-ornithe/version/YQcg9CXT) | OSL Gen1 baseline |
+| Ornithe Gen2 | [0.4.0+mc1.8.9](https://modrinth.com/mod/modmenu-ornithe/version/dqbY1yZh) | OSL Gen2 baseline |
+| Ornithe Gen2 | [0.5.0+mc1.8.9](https://modrinth.com/mod/modmenu-ornithe/version/71EHHNXc) | Additional OSL localization 0.1.0, text-components 0.1.0-alpha.3 and executors 0.1.0; core 0.9.0 and resource-loader 0.7.2 |
+
+These UI profiles use Java 8 and the loaders listed above. Exact Minecraft-specific
+module coordinates are pinned in `gradle/targets.json`. The 0.5 profile's additional
+libraries belong to that test profile; LVB's required API versions remain unchanged.
+Legacy Mod Menu 0.1.0 and 1.0.0 have incompatible APIs and mapped screen identities;
+Legacy Fabric metadata declares those versions incompatible.
+
+Screen opening, saving and closing leave the active renderer, recovery state and
+visibility unchanged. Save applies on the next launch; JVM overrides remain effective.
+Cancel and Escape discard the draft. Reset needs an explicit Save. The screen supports
+keyboard focus, scrolling and resizing, and delegates rebinding to Minecraft Controls.
+Unreadable files disable editing until reloaded. Invalid files use safe values and are
+backed up beside `lvb.properties` on an explicit repair save. An external edit or failed
+atomic replacement keeps the draft open and reports the error.
 
 ### Tested Gen1 mod combinations
 
@@ -170,6 +199,8 @@ checks with supplied mod JARs and configurations.
 | Mod ID | `lvb` |
 | Default control | `B`, rebindable in Minecraft Controls |
 | Binding key | `key.toggle_barrier_visibility` |
+| Settings control | `key.open_lvb_settings`, initially unbound and rebindable; opens settings in a world |
+| Settings persistence | UTF-8 `config/lvb.properties`; explicit Save, restart-only rendering preferences, JVM overrides take precedence |
 | Category key | `key.category.legacy_visible_barriers` |
 | Feedback keys | `lvb.to_visible`, `lvb.to_invisible`; mode/status keys `lvb.mode_native`, `lvb.unavailable`, `lvb.disabled` |
 | Resource namespace | `assets/lvb`, with barrier assets under `assets/minecraft` |

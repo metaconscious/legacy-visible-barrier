@@ -28,6 +28,15 @@ def main():
             status = launch(manifest, profile, [], render_mode="enhanced" if mode == "missing-hook" else mode,
                             missing_hook=mode == "missing-hook")
             results.append({"target": target, "profile": mode, "passed": status == 0})
+    for target, manifest in manifests.items():
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        status = launch(manifest, output / target / "mod-menu", list(map(Path, data["menu_mods"])))
+        results.append({"target": target, "profile": "mod-menu", "passed": status == 0})
+        if "menu_additional" in data:
+            extra = data["menu_additional"]
+            status = launch(manifest, output / target / "mod-menu-newer", list(map(Path, extra["mods"])),
+                            api=list(map(Path, extra["api"])))
+            results.append({"target": target, "profile": "mod-menu-newer", "passed": status == 0})
     for target, runtime in (("ornithe", "ornithe.gen2"), ("ornithe.gen2", "ornithe")):
         status = launch(manifests[target], output / target / "wrong-generation", [], runtime_manifest=manifests[runtime])
         results.append({"target": target, "profile": "wrong-generation", "passed": status == 0})

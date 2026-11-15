@@ -29,6 +29,23 @@ water and glass, without rebuilding terrain when toggled. A native compatibility
 uses the installed terrain renderer and rebuilds sections as visibility changes. See
 [rendering modes and recovery](docs/compatibility.md#rendering-modes) for configuration.
 
+## Settings
+
+With a matching [Mod Menu](docs/compatibility.md#mod-menu) installed, open **Mods →
+Legacy Visible Barrier → Configure**. Without Mod Menu, assign **Open LVB Settings**
+in Minecraft Controls and use it in a world. This binding starts unassigned; **B**
+continues to toggle visibility.
+
+The screen shows the current renderer, visibility intent and recovery status. Choose
+**Automatic**, **Compatibility** or **Disabled** for the next launch. **Advanced**
+selects gradual section updates or a full reload for compatibility rendering; full
+reloads can flicker. **Save** writes the preferences, **Cancel** discards edits, and
+**Reset** restores defaults in the draft. Restart Minecraft to apply saved changes.
+Launch options remain authoritative and are identified on the screen.
+
+Preferences remain in `config/lvb.properties`; see
+[rendering modes](docs/compatibility.md#rendering-modes) for file and JVM options.
+
 ## Development
 
 Install JDK 21 and Python 3.10+, then run:

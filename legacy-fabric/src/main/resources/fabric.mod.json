@@ -9,7 +9,7 @@
     "DaveyL2013"
   ],
   "contact": {
-    "homepage": "https://modrinth.com/mod/legacy-visible-barrier",
+    "homepage": "https://github.com/metaconscious/legacy-visible-barrier#readme",
     "sources": "https://github.com/metaconscious/legacy-visible-barrier",
     "issues": "https://github.com/metaconscious/legacy-visible-barrier/issues"
   },
@@ -17,6 +17,7 @@
   "icon": "assets/lvb/icon.png",
   "environment": "client",
   "entrypoints": {
+    "modmenu": ["io.github.metaconscious.lvb.legacyfabric.ModMenuIntegration"],
     "client": [
       "io.github.metaconscious.lvb.legacyfabric.LegacyFabricClient"
     ]
@@ -30,6 +31,8 @@
     "java": ">=8",
     "legacy-fabric-api": "${apiMinimums['legacy-fabric-api']}"
   },
+  "suggests": {"modmenu": ">=${modMenuMinimum}"},
+  "breaks": {"modmenu": ["0.1.0", "1.0.0"]},
   "custom": {"lvb:target": {
     "id": "${targetId}",
     "name": "${targetName}",
