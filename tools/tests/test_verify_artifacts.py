@@ -61,6 +61,8 @@ class ArtifactTests(unittest.TestCase):
         core_name = "io/github/metaconscious/lvb/core/VisibilityController"
         self.core = {core_name + ".class": empty_class(core_name)}
         self.entries = dict(self.core)
+        support = "io/github/metaconscious/lvb/client/SettingsFile"
+        self.entries[support + '.class'] = empty_class(support)
         self.entries.update({
             "LICENSE": b"CC0-1.0",
             "META-INF/MANIFEST.MF": b"Manifest-Version: 1.0\r\nLegacy-Fabric-Intermediary-Version: 1\r\n",

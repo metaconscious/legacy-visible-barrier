@@ -7,7 +7,7 @@ Install JDK 21 and Python 3.10 or newer. The committed
 also uses JDK 21; tests and development clients use JDK 8.
 
 Gradle detects installed JDKs first and provisions missing versions into its user home
-(`~/.gradle/jdks` by default). The root and included `build-logic` builds both configure
+(`~/.gradle/jdks` by default). The root and included builds configure
 the Foojay toolchain resolver. The first build requires network access. For preinstalled
 toolchains, `LVB_BUILD_JDK` and `LVB_TEST_JDK` can identify their installation directories.
 CI also uses the standard `JAVA_HOME_21_X64` and `JAVA_HOME_8_X64` variables.
@@ -20,7 +20,7 @@ cd legacy-visible-barrier
 
 Use `gradlew.bat` on Windows. The build uses Python's `python3` command. The wrapper pins
 Gradle 9.2.1 and verifies the distribution checksum. Loom 1.15.5, Legacy Looming 1.15.3,
-and Ploceus 1.15.9 share the JDK 21 build runtime; mod classes compile with `--release 8`.
+Ploceus 1.15.9 and isolated Essential Loom 1.15.51 use JDK 21; mod classes compile with `--release 8`.
 
 ### IntelliJ IDEA
 
@@ -35,7 +35,9 @@ Both `ornithe:gen1` and `ornithe:gen2` are imported together. Each owns its Java
 Minecraft mappings and OSL classpath. Run `:ornithe:gen1:runClient` or
 `:ornithe:gen2:runClient` from the Gradle tool window to use the provisioned Java 8 runtime.
 Loom also generates separate **Minecraft Client** application configurations for each
-generation. Reload Gradle after updating an existing checkout to this layout.
+generation. Use the Gradle task `:lvb-forge:runClient` for Forge; it prepares the legacy
+FML resource layout and Mixin bootstrap. Reload Gradle after updating an existing
+checkout to this layout.
 
 To refresh the daemon JDK download URLs while retaining Java 21, run
 `./gradlew updateDaemonJvm --jvm-version=21` and commit the generated properties file.
@@ -45,22 +47,24 @@ Useful tasks:
 | Command | Purpose |
 | --- | --- |
 | `./gradlew :core:test` | Domain, lifecycle and settings-draft tests on Java 8 |
-| `./gradlew :legacy-fabric:test :ornithe:test` | Configuration persistence tests on Java 8 |
+| `./gradlew :client-support:test` | Configuration persistence tests on Java 8 |
 | `./gradlew testReleaseTools` | Release, artifact and compatibility-runner script tests |
-| `./gradlew verifyArtifacts` | Build and inspect all three remapped JARs |
+| `./gradlew verifyArtifacts` | Build and inspect all four remapped JARs |
 | `./gradlew verifyDistributions` | Alias for all-distribution artifact verification |
-| `./gradlew prepareModCompatibility` | Prepare all three production client fixtures |
-| `./gradlew smokeTest` | Verify all three Java 8 development clients in enhanced, native, off and missing-hook profiles |
+| `./gradlew prepareModCompatibility` | Prepare all production client fixtures, including Quilt runtimes |
+| `./gradlew smokeTest` | Verify production clients, settings providers, rendering modes and generation guards |
 | `./gradlew :legacy-fabric:runClient` | Legacy Fabric development client |
 | `./gradlew :ornithe:gen1:runClient` | Ornithe Gen1 development client |
 | `./gradlew :ornithe:gen2:runClient` | Ornithe Gen2 development client |
+| `./gradlew :lvb-forge:runClient` | Forge development client |
+| `./gradlew :lvb-forge:runSmokeTest` | Mapped Forge development client contracts |
 | `./gradlew stageRelease` | Stage verified JARs and a source/hash manifest from a clean checkout |
 
-Final installable JARs are in `legacy-fabric/build/libs`, `ornithe/gen1/build/libs` and
-`ornithe/gen2/build/libs`. Development and
+Final installable JARs are in `legacy-fabric/build/libs`, `ornithe/gen1/build/libs`,
+`ornithe/gen2/build/libs` and `forge/build/libs`. Development and
 source JARs are not installation artifacts. `build/distributions` contains the exact
 release files after staging. Artifact checks write `build/reports/artifacts.json`
-for all three targets.
+for all four targets.
 
 The root build compiles both Ornithe generations in one invocation. To build one,
 use `:ornithe:gen1:build` or `:ornithe:gen2:build`. Minecraft integration lives in
@@ -82,18 +86,18 @@ Validate workflow changes with `actionlint`.
 
 `smokeTest` requires a display. On headless Linux, install Xvfb, `xrandr`, and Mesa OpenGL
 drivers, then run `LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a ./gradlew smokeTest`.
-It uses fresh directories under each target's build directory,
-exits automatically, and writes the enhanced report to `reports/smoke-test.txt`
-and `reports/client.json`. Other profiles write to `reports/nativeSmokeTest`,
-`offSmokeTest` and `missingHookSmokeTest`. Test mod classes and resources are excluded
-from distributions.
+It uses fresh directories under `build/client-tests`, exits automatically and writes
+one structured result and console log per profile. Test classes and resources are
+excluded from distributions.
 
-Full verification builds all distributions, then runs the same client contracts
-against all three production JARs. Four additional Mod Menu profiles verify native settings through the published provider
-APIs; two negative launches require early rejection of the wrong Ornithe generation. CI runs this sequence before staging:
+Full verification builds all distributions and runs the production client contracts on
+Fabric, Quilt and Forge. Mod Menu and Forge's built-in settings factory exercise the
+actual configuration entrypoints. Two negative launches require early rejection of the
+wrong Ornithe generation. CI runs this sequence before staging:
 
 ```sh
 ./gradlew clean build prepareModCompatibility
+./gradlew :lvb-forge:runSmokeTest
 python3 tools/verify_clients.py --output build/client-tests
 ./gradlew verifyDistributions
 ```
@@ -132,7 +136,9 @@ python3 tools/test_mod_compatibility.py legacy-fabric \
   --property lvb.smoke.chunkBorders=true
 ```
 
-Select `legacy-fabric`, `ornithe` or `ornithe.gen2` as the runner's first argument.
+Select `legacy-fabric`, `ornithe`, `ornithe.gen2` or `forge` as the runner's first argument.
+Use `--loader quilt` with either Ornithe target to select its prepared Quilt runtime.
+Forge selects its LaunchWrapper runtime automatically.
 Each `--profile` must be a new directory. Repeat `--mod` for additional JARs; the
 runner supplies LVB, its test mod and the adapter's baseline APIs. Add optional OSL
 modules when another mod requires them. To test a newer complete API distribution,
@@ -151,7 +157,7 @@ to exercise its full-reload option. The default is enhanced mode with dirty nati
 refresh during recovery. The runner explicitly selects the requested mode and requires
 its corresponding client assertions.
 
-With OptiFine/OptiFabric installed, `--shader-pack /path/to/pack.zip` copies and selects
+With OptiFine installed (and OptiFabric on Fabric/Quilt), `--shader-pack /path/to/pack.zip` copies and selects
 an external shader pack. The smoke test requires that pack and a shader program to be
 active in the main translucent pass. The report records the pack hash. Supply
 `optionsof.txt` with Fast Render disabled for this profile.
@@ -174,9 +180,9 @@ The pinned Mod Menu UI profiles run in CI. Other third-party fixtures are suppli
 locally. Test mods and their dependencies are excluded from release artifacts.
 
 Fixture versions and their environments are listed in [compatibility.md](docs/compatibility.md).
-For dependency updates, edit `gradle/targets.json`, preserving the intermediary generation
+For dependency updates, edit `gradle/targets.json` and `gradle/runtime-profiles.json`, preserving the mapping environment
 and updating explicit module coordinates together. OSL baselines are 0.16.3 for Gen1
-and 0.17.1 for Gen2. Check all three distributions when changing Loom, mappings, resources, or the core. Do not raise
+and 0.17.1 for Gen2. Check all four distributions when changing Loom, mappings, resources, or the core. Do not raise
 a documented minimum dependency version without applying the compatibility policy.
 
 ## In-game smoke test

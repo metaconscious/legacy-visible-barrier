@@ -45,7 +45,9 @@ dependencies {
     modCompileOnly(target.mod_menu.coordinate) { transitive = false }
     menuTestMods(target.mod_menu.coordinate) { transitive = false }
     implementation project(':core')
+    implementation project(':client-support')
     bundledCore project(':core')
+    bundledAdapter project(':client-support')
     sharedResources project(path: ':shared-resources', configuration: 'resourceElements')
     def intermediary = target.platform == 'legacy-fabric' ? 'net.legacyfabric:intermediary' :
             "net.ornithemc:calamus-intermediary${target.generation == 2 ? '-gen2' : ''}"

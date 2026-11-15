@@ -17,7 +17,6 @@ repositories {
 }
 
 dependencies {
-    testImplementation 'junit:junit:4.13.2'
     minecraft "com.mojang:minecraft:${minecraft_version}"
     mappings legacy.yarn(minecraft_version, target.mapping_build.toString())
     modImplementation "net.fabricmc:fabric-loader:${target.loader_version}"

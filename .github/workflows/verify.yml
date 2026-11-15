@@ -33,19 +33,18 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Verify settings persistence on Windows
-        run: ./gradlew --no-daemon --max-workers=2 :legacy-fabric:test :ornithe:test
+        run: ./gradlew --no-daemon --max-workers=2 :client-support:test
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
           name: windows-settings-reports
           path: |
-            legacy-fabric/build/test-results/
-            ornithe/build/test-results/
+            client-support/build/test-results/
           if-no-files-found: ignore
           retention-days: 14
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     outputs:
       commit: ${{ steps.source.outputs.commit }}
     steps:
@@ -80,10 +79,12 @@ jobs:
           sudo apt-get install --no-install-recommends -y xvfb x11-xserver-utils libgl1-mesa-dri libglx-mesa0
       - name: Build and test all distributions
         run: ./gradlew --no-daemon --max-workers=2 clean build prepareModCompatibility
-      - name: Verify production clients and generation boundaries
+      - name: Verify development and production clients
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
-        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 tools/verify_clients.py
+        run: |
+          xvfb-run -a -s '-screen 0 1280x720x24' ./gradlew --no-daemon --max-workers=2 :lvb-forge:runSmokeTest
+          xvfb-run -a -s '-screen 0 1280x720x24' python3 tools/verify_clients.py
       - name: Verify and stage all distributions
         run: ./gradlew --no-daemon --max-workers=2 stageRelease
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -104,13 +105,14 @@ jobs:
           path: |
             core/build/test-results/
             core/build/reports/tests/
-            legacy-fabric/build/test-results/
-            ornithe/build/test-results/
+            client-support/build/test-results/
+            client-support/build/reports/tests/
             build/reports/artifacts.json
             legacy-fabric/build/reports/smoke-test.txt
             legacy-fabric/build/reports/client.json
             legacy-fabric/build/reports/*SmokeTest/
             ornithe/gen*/build/reports/
+            forge/build/reports/
             build/client-tests/**/result.json
             build/client-tests/**/smoke.txt
             build/client-tests/**/console.log

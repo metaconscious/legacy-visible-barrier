@@ -1,0 +1,264 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import net.fabricmc.loom.task.RemapJarTask
+
+plugins {
+    id 'gg.essential.loom-remap' version '1.15.51'
+}
+
+def releaseProperties = new Properties()
+file('../gradle.properties').withInputStream { releaseProperties.load(it) }
+def target = new JsonSlurper().parse(file('../gradle/targets.json')).forge
+group = 'io.github.metaconscious.mod'
+version = "${releaseProperties.mod_version}+forge"
+base.archivesName = 'legacy-visible-barrier'
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.minecraftforge.net/' }
+    maven {
+        name = 'ForgeLegacyArtifacts'
+        url = 'https://maven.minecraftforge.net/'
+        metadataSources { artifact() }
+        content {
+            includeModule('org.scala-lang', 'scala-parser-combinators_2.11')
+            includeModule('org.scala-lang', 'scala-swing_2.11')
+            includeModule('org.scala-lang', 'scala-xml_2.11')
+        }
+    }
+    maven { url = 'https://libraries.minecraft.net/' }
+}
+
+configurations {
+    bundledCore { canBeConsumed = false; transitive = false }
+    bundledSupport { canBeConsumed = false; transitive = false }
+    bundledMixin { canBeConsumed = false; transitive = false }
+    sharedResources {
+        canBeConsumed = false
+        transitive = false
+        attributes.attribute(Attribute.of('io.github.metaconscious.lvb.content', String), 'resources')
+    }
+    productionJarElements {
+        canBeConsumed = true
+        canBeResolved = false
+        attributes.attribute(Attribute.of('io.github.metaconscious.lvb.content', String), 'distribution')
+    }
+}
+
+artifacts { productionJarElements tasks.named('remapJar') }
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 8
+    options.encoding = 'UTF-8'
+    options.compilerArgs.add('-Xlint:-options')
+}
+
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
+loom {
+    forge {
+        pack200Provider = new dev.architectury.pack200.java.Pack200Adapter()
+        mixinConfig 'lvb-forge.mixins.json'
+    }
+    mixin {
+        useLegacyMixinAp = true
+        defaultRefmapName = 'lvb-forge.refmap.json'
+    }
+}
+
+def mixinClasses = copySpec {
+    from({ zipTree(configurations.bundledMixin.singleFile) }) {
+        include 'org/spongepowered/asm/**'
+        exclude 'org/spongepowered/asm/service/modlauncher/**'
+        exclude 'org/spongepowered/asm/launch/MixinLaunchPlugin*.class'
+        exclude 'org/spongepowered/asm/launch/MixinTransformationService*.class'
+        exclude 'org/spongepowered/asm/launch/platform/container/ContainerHandleModLauncher*.class'
+    }
+}
+def mixinRuntime = tasks.register('mixinRuntimeJar', Jar) {
+    with mixinClasses
+    from('src/main/resources/META-INF/services') { into 'META-INF/services' }
+    from({ zipTree(configurations.bundledMixin.singleFile) }) { include 'LICENSE.txt' }
+    archiveFileName = "mixin-${target.mixin_version}-launchwrapper.jar"
+    destinationDirectory = layout.buildDirectory.dir('runtime')
+}
+
+dependencies {
+    implementation "io.github.metaconscious.mod:core:${releaseProperties.mod_version}"
+    implementation "io.github.metaconscious.mod:client-support:${releaseProperties.mod_version}"
+    bundledCore "io.github.metaconscious.mod:core:${releaseProperties.mod_version}"
+    bundledSupport "io.github.metaconscious.mod:client-support:${releaseProperties.mod_version}"
+    sharedResources "io.github.metaconscious.mod:shared-resources:${releaseProperties.mod_version}"
+    compileOnly("org.spongepowered:mixin:${target.mixin_version}") { transitive = false }
+    runtimeOnly files(mixinRuntime)
+    bundledMixin("org.spongepowered:mixin:${target.mixin_version}") { transitive = false }
+    minecraft "com.mojang:minecraft:${releaseProperties.minecraft_version}"
+    mappings "de.oceanlabs.mcp:mcp_stable:${target.mapping_build}-${releaseProperties.minecraft_version}"
+    forge "net.minecraftforge:forge:${target.forge_version}"
+}
+
+tasks.named('processResources', ProcessResources) {
+    dependsOn configurations.sharedResources
+    inputs.property 'version', project.version
+    filesMatching('mcmod.info') { expand version: project.version }
+    from({ configurations.sharedResources.collect { zipTree(it) } }) { exclude 'META-INF/**' }
+    from({ zipTree(configurations.bundledMixin.singleFile) }) {
+        include 'LICENSE.txt'
+        into 'META-INF/licenses'
+        rename 'LICENSE.txt', 'mixin.txt'
+    }
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+}
+
+tasks.named('jar', Jar) {
+    dependsOn configurations.bundledCore, configurations.bundledSupport
+    from({ (configurations.bundledCore + configurations.bundledSupport).collect { zipTree(it) } }) {
+        exclude 'META-INF/**'
+    }
+    with mixinClasses
+    from file('../LICENSE')
+    manifest.attributes(
+            'Implementation-Version': project.version,
+            'TweakClass': 'org.spongepowered.asm.launch.MixinTweaker',
+            'TweakOrder': '0',
+            'ForceLoadAsMod': 'true',
+            'FMLCorePluginContainsFMLMod': 'true',
+            'MixinConfigs': 'lvb-forge.mixins.json')
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+}
+
+sourceSets {
+    smokeTest {
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+    }
+}
+
+loom.mixin {
+    add sourceSets.main, 'lvb-forge.refmap.json'
+    add sourceSets.smokeTest, 'lvb-forge-smoke.refmap.json'
+}
+tasks.named('runClient', JavaExec) {
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
+}
+
+loom.runs {
+    client { ideConfigGenerated false }
+    smokeTest {
+        client()
+        ideConfigGenerated false
+        source sourceSets.smokeTest
+        runDir 'build/smoke-test/run'
+        vmArg '-Dlvb.smoke.report=' + layout.buildDirectory.file('reports/smoke-test.txt').get().asFile
+        vmArg '-Dlvb.smoke.expectedMode=enhanced'
+        programArg '--mixin'
+        programArg 'lvb-forge-smoke.mixins.json'
+    }
+}
+loom.runs.configureEach {
+    programArg '--tweakClass'
+    programArg 'org.spongepowered.asm.launch.MixinTweaker'
+}
+// Legacy FML discovers language domains beside each mod's classes.
+def developmentMod = tasks.register('prepareDevelopmentMod', Sync) {
+    from sourceSets.main.output
+    into layout.buildDirectory.dir('development-mod')
+}
+['runClient', 'runSmokeTest'].each { name ->
+    tasks.named(name, JavaExec) {
+        dependsOn developmentMod
+        def originalClasspath = files(new ArrayList(classpath.from))
+        classpath = originalClasspath.minus(sourceSets.main.output).plus(files(developmentMod))
+    }
+}
+tasks.named('runSmokeTest', JavaExec) {
+    group = 'verification'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
+    timeout = Duration.ofMinutes(5)
+    doFirst {
+        delete layout.buildDirectory.dir('smoke-test/run')
+        delete layout.buildDirectory.file('reports/smoke-test.txt'), layout.buildDirectory.file('reports/client.json')
+        mkdir layout.buildDirectory.dir('smoke-test/run')
+    }
+}
+
+def directory = layout.buildDirectory.dir('mod-compatibility')
+def smokeJar = tasks.register('compatibilitySmokeJar', Jar) {
+    from sourceSets.smokeTest.output
+    archiveFileName = 'forge-smoke-dev.jar'
+    destinationDirectory = directory
+    manifest.attributes('TweakClass': 'org.spongepowered.asm.launch.MixinTweaker', 'TweakOrder': '0',
+            'ForceLoadAsMod': 'true', 'FMLCorePluginContainsFMLMod': 'true',
+            'MixinConfigs': 'lvb-forge-smoke.mixins.json')
+}
+def remappedSmoke = tasks.register('remapCompatibilitySmoke', RemapJarTask) {
+    inputFile = smokeJar.flatMap { it.archiveFile }
+    archiveFileName = 'forge-smoke.jar'
+    destinationDirectory = directory
+    addNestedDependencies = false
+    classpath.from(sourceSets.main.output)
+}
+
+tasks.register('prepareVerificationMappings', Copy) {
+    from { loom.mappingConfiguration.tinyMappingsWithSrg.toFile() }
+    into layout.buildDirectory.dir('verification/mappings')
+    rename 'mappings-srg.tiny', 'mappings.tiny'
+}
+tasks.named('check') { dependsOn 'prepareVerificationMappings' }
+
+tasks.register('prepareModCompatibility') {
+    group = 'verification'
+    description = 'Prepares the published Forge runtime and remapped client contracts.'
+    dependsOn remappedSmoke, tasks.named('remapJar'), tasks.named('downloadAssets')
+    doLast {
+        def minecraft = loom.minecraftProvider
+        def universal = configurations.forgeUniversal.singleFile
+        def forgeProfile = new JsonSlurper().parseText(zipTree(universal).matching { include 'version.json' }.singleFile.text)
+        def vanillaProfile = new JsonSlurper().parse(new File(minecraft.minecraftClientJar.parentFile, 'mojang_minecraft_info.json'))
+        def os = System.getProperty('os.name').toLowerCase(Locale.ROOT)
+        def osName = os.contains('win') ? 'windows' : os.contains('mac') ? 'osx' : 'linux'
+        def libraries = (forgeProfile.libraries + vanillaProfile.libraries).findAll { library ->
+            if (library.name.startsWith('net.minecraftforge:forge:') || library.clientreq == false) return false
+            if (library.natives && !library.downloads?.artifact) return false
+            boolean allowed = !library.rules
+            library.rules?.each { rule ->
+                if (!rule.os || rule.os.name == osName) allowed = rule.action == 'allow'
+            }
+            allowed
+        }*.name.unique()
+        def resolved = configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.collectEntries { artifact ->
+            [(artifact.moduleVersion.id.toString()): artifact.file]
+        }
+        def runtimeFiles = libraries.collect { coordinate ->
+            // Reuse an exact published version already resolved for development; exclude every Loom extra.
+            if (resolved.containsKey(coordinate)) return resolved[coordinate]
+            def configuration = configurations.detachedConfiguration(project.dependencies.create("${coordinate}@jar"))
+            configuration.transitive = false
+            configuration.singleFile
+        }
+        def launch = [platform: 'forge', target: 'forge', loader: 'forge', version: project.version,
+                mapping: [minecraft: releaseProperties.minecraft_version, namespace: target.mapping_family, build: target.mapping_build],
+                main_class: forgeProfile.mainClass,
+                launch_args: ['--tweakClass', 'net.minecraftforge.fml.common.launcher.FMLTweaker'],
+                java: javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }.get().executablePath.asFile.path,
+                classpath: runtimeFiles.collect { it.path } + [universal.path],
+                core: configurations.bundledCore.singleFile.path,
+                minecraft: minecraft.minecraftClientJar.path,
+                assets: new File(loom.files.userCache, 'assets').path,
+                assetIndex: minecraft.versionInfo.assetIndex().fabricId(minecraft.minecraftVersion()),
+                natives: configurations.minecraftNatives.files.collect { it.path },
+                mods: [tasks.named('remapJar').get().archiveFile.get().asFile.path,
+                       remappedSmoke.get().archiveFile.get().asFile.path]]
+        directory.get().file('launch.json').asFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(launch)) + '\n'
+    }
+}

@@ -1,5 +1,7 @@
 package io.github.metaconscious.lvb.legacyfabric;
 
+import io.github.metaconscious.lvb.client.SettingsFile;
+
 import io.github.metaconscious.lvb.core.RenderingPolicy;
 import io.github.metaconscious.lvb.core.RenderingPreferences;
 import net.fabricmc.loader.api.FabricLoader;

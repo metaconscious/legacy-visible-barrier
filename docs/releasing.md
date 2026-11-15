@@ -3,18 +3,19 @@
 ## Version and artifacts
 
 Set `mod_version` in `gradle.properties` and add the matching `CHANGELOG.md` entry. The
-release version has no build metadata. All three distributions are published together
+release version has no build metadata. All four distributions are published together
 in one GitHub release; their target configuration is in `gradle/targets.json`:
 
 | Target | Artifact version |
 | --- | --- |
-| Legacy Fabric Gen1 | `1.4.0+legacy-fabric` |
-| Ornithe Gen1 | `1.4.0+ornithe` |
-| Ornithe Gen2 | `1.4.0+ornithe.gen2` |
+| Legacy Fabric Gen1 | `1.5.0+legacy-fabric` |
+| Ornithe Gen1 | `1.5.0+ornithe` |
+| Ornithe Gen2 | `1.5.0+ornithe.gen2` |
+| Forge | `1.5.0+forge` |
 
 Each version appears in its JAR filename and mod metadata. GitHub prerelease status
-follows the presence of a SemVer prerelease identifier, such as `1.4.0-rc.1`.
-The release contains all three remapped JARs, `SHA512SUMS`, and `release.json` with the
+follows the presence of a SemVer prerelease identifier, such as `1.5.0-rc.1`.
+The release contains all four remapped JARs, `SHA512SUMS`, and `release.json` with the
 source commit, artifact versions, sizes and hashes.
 
 ## Repository setup
@@ -33,11 +34,11 @@ access. Use GitHub CLI for repository administration and release operations.
 2. From the clean release checkout, run the full
    [verification sequence](../CONTRIBUTING.md#changes-and-tests), then
    `./gradlew stageRelease`. Complete the
-   [in-game smoke test](../CONTRIBUTING.md#in-game-smoke-test) for all three artifacts.
+   [in-game smoke test](../CONTRIBUTING.md#in-game-smoke-test) for all four artifacts.
 3. Create the tag at the reviewed commit. This starts the release workflow:
 
    ```sh
-   release_tag=v1.4.0
+   release_tag=v1.5.0
    release_commit=$(git rev-parse HEAD)
    gh api --method POST repos/metaconscious/legacy-visible-barrier/git/refs \
      -f ref="refs/tags/$release_tag" -f sha="$release_commit"
@@ -45,8 +46,8 @@ access. Use GitHub CLI for repository administration and release operations.
 
 The workflow also accepts pushed `v*` tags. It requires exact tag/version equality and
 checks that the tagged commit belongs to `main`. The reusable verification workflow builds
-all distributions, runs unit and Windows persistence tests, sixteen production-client profiles and two
-cross-generation rejection checks, verifies their contents, and stages their hashes and
+all distributions, runs unit and Windows persistence tests, production-client profiles on Fabric, Quilt and Forge, including
+settings providers, rendering recovery and cross-generation rejection, verifies their contents, and stages their hashes and
 source commit. The publisher downloads those same-run artifacts and does not rebuild.
 
 The publisher checks the source commit, manifest and file hashes, then creates or resumes
@@ -61,7 +62,7 @@ If retained workflow artifacts have expired, dispatch the existing tag's workflo
 
 ```sh
 gh workflow run release.yml --repo metaconscious/legacy-visible-barrier \
-  --ref v1.4.0 -f tag=v1.4.0
+  --ref v1.5.0 -f tag=v1.5.0
 ```
 
 Identical assets are reused; only absent files are uploaded. Conflicting hashes,

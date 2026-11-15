@@ -3,13 +3,22 @@ plugins { id 'lvb.adapter-conventions' }
 ploceus { setIntermediaryGeneration(target.generation as int) }
 
 repositories {
+    maven {
+        url = 'https://maven.quiltmc.org/repository/release/'
+        content { includeGroup 'org.quiltmc' }
+    }
     exclusiveContent {
         forRepository { maven { url = 'https://maven.ornithemc.net/releases/' } }
         filter { includeGroupByRegex 'net\\.ornithemc(\\..*)?' }
     }
 }
 
+configurations {
+    quiltRuntime { canBeConsumed = false; transitive = false }
+}
+
 dependencies {
+    rootProject.runtimeProfiles.quilt.libraries.each { coordinate -> quiltRuntime coordinate }
     minecraft "com.mojang:minecraft:${minecraft_version}"
     mappings ploceus.featherMappings(target.mapping_build.toString())
     modImplementation "net.fabricmc:fabric-loader:${target.loader_version}"

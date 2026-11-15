@@ -16,6 +16,9 @@ and put it in the instance's `mods` directory with its required API. The existin
 | Legacy Fabric, intermediary generation 1 | `+legacy-fabric.jar` | [Legacy Fabric API](https://modrinth.com/mod/legacy-fabric-api), 1.11.1+1.8.9 or compatible later version |
 | Ornithe, Calamus generation 1 | `+ornithe.jar` | [Ornithe Standard Libraries](https://modrinth.com/mod/osl), 0.16.3 |
 | Ornithe, Calamus generation 2 | `+ornithe.gen2.jar` | [Ornithe Standard Libraries Gen2](https://modrinth.com/mod/osl/version/PSPwlyvh), 0.17.1 or compatible later Gen2 version |
+| Forge 11.15.1.2318 | `+forge.jar` | None; Mixin is included |
+
+Ornithe artifacts also support Quilt Loader 0.30.2 with the matching generation and OSL.
 
 Install one variant. All use mod ID `lvb`. Java 8 is the runtime baseline, and no server
 installation is needed. See the [compatibility matrix](docs/compatibility.md) for loader
@@ -32,7 +35,8 @@ uses the installed terrain renderer and rebuilds sections as visibility changes.
 ## Settings
 
 With a matching [Mod Menu](docs/compatibility.md#mod-menu) installed, open **Mods →
-Legacy Visible Barrier → Configure**. Without Mod Menu, assign **Open LVB Settings**
+Legacy Visible Barrier → Configure**. On Forge, use **Mods → Legacy Visible Barrier → Config**.
+The same screen is available by assigning **Open LVB Settings**
 in Minecraft Controls and use it in a world. This binding starts unassigned; **B**
 continues to toggle visibility.
 
@@ -62,7 +66,7 @@ Both Ornithe generations are available in the same import as `ornithe:gen1` and
 `ornithe:gen2`, each with its own Minecraft mappings, OSL dependencies and client task.
 
 The build produces separate remapped JARs in `legacy-fabric/build/libs`,
-`ornithe/gen1/build/libs` and `ornithe/gen2/build/libs`. The projects share their core
+`ornithe/gen1/build/libs`, `ornithe/gen2/build/libs` and `forge/build/libs`. The projects share their core
 logic and assets. Read
 [CONTRIBUTING.md](CONTRIBUTING.md) for development commands and testing,
 [architecture](docs/architecture.md) for module boundaries, and
@@ -70,7 +74,8 @@ logic and assets. Read
 
 ## License and credits
 
-Released under [CC0-1.0](LICENSE).
+LVB is released under [CC0-1.0](LICENSE). The Forge distribution also contains upstream
+Mixin 0.8.7 under its MIT license, included at `META-INF/licenses/mixin.txt`.
 
 Created by Mark Oven, with the Ornithe port contributed by
 [DaveyL2013](https://github.com/DaveyL2013). Inspired by

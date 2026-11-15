@@ -12,8 +12,8 @@ repositories {
 configurations.testFixturesCompileOnly.extendsFrom configurations.compileOnly
 
 dependencies {
-    testImplementation 'junit:junit:4.13.2'
     implementation project(':core')
+    implementation project(':client-support')
     compileOnly "net.fabricmc:fabric-loader:${rootProject.targetCatalog.ornithe.loader_version}"
     compileOnly('net.fabricmc:sponge-mixin:0.16.5+mixin.0.8.7') { transitive = false }
     compileOnly 'org.ow2.asm:asm-tree:9.9'

@@ -3,6 +3,15 @@
 Versions follow [Semantic Versioning 2.0.0](https://semver.org/). The public compatibility
 surface is defined in [docs/compatibility.md](docs/compatibility.md).
 
+## [1.5.0] - Unreleased
+
+- Add a Forge 1.8.9 distribution with enhanced rendering, native recovery and the built-in Mods configuration screen.
+- Support Quilt Loader 0.30.2 with the existing Ornithe Gen1 and Gen2 artifacts.
+- Share atomic settings persistence across every adapter and consolidate its unit tests.
+- Isolate Forge build tooling in a composite build while retaining Gradle 9.2.1, JDK 21 and Java 8 output.
+- Bundle the Java 8 LaunchWrapper runtime from Mixin 0.8.7 in the Forge artifact.
+- Verify production launcher profiles, rendering modes, settings entrypoints and packaged module boundaries.
+
 ## [1.4.0] - 2026-11-15
 
 - Add native settings screens for all three distributions, with optional Mod Menu integration.

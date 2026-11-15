@@ -13,5 +13,8 @@ plugins {
 }
 
 rootProject.name = 'legacy-visible-barrier'
-include 'core', 'shared-resources', 'legacy-fabric', 'ornithe'
+include 'core', 'client-support', 'shared-resources', 'legacy-fabric', 'ornithe'
 include 'ornithe:gen1', 'ornithe:gen2'
+
+includeBuild('.')
+includeBuild('forge') { name = 'lvb-forge' }

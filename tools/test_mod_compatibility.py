@@ -14,6 +14,7 @@ from versions import TARGETS
 FEATURES = {
     "legacy-fabric": {"chunkBorders", "expectHitboxes", "expectHighlights", "orthographic", "axolotlOutlines"},
     "ornithe": {"villages", "waypoints", "axolotlOutlines", "miningProgress"},
+    "forge": {"expectHitboxes", "expectHighlights"},
 }
 COMMON_ASSERTIONS = {"startup-controls", "settings-ui", "settings-runtime-isolation"}
 BASE_ASSERTIONS = COMMON_ASSERTIONS | {
@@ -60,6 +61,8 @@ def validate_client(result):
         required = NATIVE_ASSERTIONS - {"native-startup-isolation"} | {"missing-hook-recovery"}
     if any(mod.get("id") == "modmenu" for mod in result.get("mods", [])):
         required = required | {"modmenu-screen"}
+    if result["platform"] == "forge":
+        required = required | {"forge-config-screen"}
     required = required | {
         "feature:" + p.split(".")[-1].split("=")[0] for p in result["properties"] if p.endswith("=true")
     }
@@ -73,12 +76,29 @@ def validate_client(result):
 
 def is_mod(jar):
     with zipfile.ZipFile(jar) as archive:
-        return "fabric.mod.json" in archive.namelist()
+        return any(name in archive.namelist() for name in ("fabric.mod.json", "mcmod.info"))
+
+
+def mod_metadata(archive):
+    if "fabric.mod.json" in archive.namelist():
+        return json.loads(archive.read("fabric.mod.json"))
+    if "mcmod.info" in archive.namelist():
+        info = json.loads(archive.read("mcmod.info"))
+        info = info if isinstance(info, list) else info.get("modList", [])
+        if info:
+            return {"id": info[0]["modid"], "version": info[0]["version"]}
+    return {}
 
 
 def launch(manifest, profile, mods, java=None, properties=(), config=None, options=(), shader_pack=None,
-           render_mode="enhanced", native_refresh="dirty", missing_hook=False, runtime_manifest=None, api=None):
+           render_mode="enhanced", native_refresh="dirty", missing_hook=False, runtime_manifest=None, api=None,
+           loader=None):
     data = json.loads(manifest.read_text(encoding="utf-8"))
+    loader = loader or data.get("loader", "fabric")
+    if loader != data.get("loader", "fabric"):
+        if loader not in data.get("runtimes", {}):
+            raise ValueError(f"No prepared {loader} runtime for {data['platform']}")
+        data.update(data["runtimes"][loader])
     if runtime_manifest:
         runtime = json.loads(runtime_manifest.read_text(encoding="utf-8"))
         if runtime["mapping"] == data["mapping"]:
@@ -121,7 +141,7 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
         if jar.name.startswith("fabric-loader-") or (not is_mod(jar) and jar not in mods):
             continue
         with zipfile.ZipFile(jar) as archive:
-            metadata = json.loads(archive.read("fabric.mod.json")) if "fabric.mod.json" in archive.namelist() else {}
+            metadata = mod_metadata(archive)
         if api and is_baseline and metadata.get("id") not in ("lvb", "lvb_smoke"):
             continue
         if runtime_manifest:
@@ -149,7 +169,7 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
         if (not jar.is_file() or jar in bundled
                 or jar.name.startswith(("minecraft-", "dev-launch-injector-"))):
             continue
-        if is_mod(jar) and not jar.name.startswith("fabric-loader-"):
+        if loader != "forge" and is_mod(jar) and not jar.name.startswith("fabric-loader-"):
             continue
         classpath.append(str(jar))
     classpath.append(data["minecraft"])
@@ -164,11 +184,12 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
                f"-Dlvb.nativeRefresh={native_refresh}", *[f"-D{p}" for p in properties],
                *(["-Dlvb.smoke.missingHook=true"] if missing_hook else []),
                *([f"-Dlvb.smoke.shaderPack={shader_pack.name}"] if shader_pack else []),
-               "-cp", os.pathsep.join(classpath), "net.fabricmc.loader.impl.launch.knot.KnotClient",
+               "-cp", os.pathsep.join(classpath), data.get("main_class", "net.fabricmc.loader.impl.launch.knot.KnotClient"),
+               *data.get("launch_args", []),
                "--version", "1.8.9", "--gameDir", str(profile), "--assetsDir", data["assets"],
                "--assetIndex", data["assetIndex"], "--accessToken", "0", "--username", "LVBTest",
                "--userProperties", "{}"]
-    result = {"schema": 1, "platform": data["platform"], "java": command[0], "mods": installed,
+    result = {"schema": 1, "platform": data["platform"], "loader": loader, "java": command[0], "mods": installed,
               "target": data.get("target", data["platform"]), "missing_hook": missing_hook,
               "mapping": data["mapping"], "version": data["version"],
               "runtime_artifacts": [{"file": Path(p).name, "sha256": digest(Path(p))}
@@ -222,6 +243,7 @@ def main():
     parser.add_argument("--config", type=Path, help="Directory of mod configurations to copy")
     parser.add_argument("--options", type=Path, action="append", default=[], help="Minecraft options file; repeat as needed")
     parser.add_argument("--java", help="Java executable; defaults to the build's Java 8 launcher")
+    parser.add_argument("--loader", choices=("fabric", "quilt", "forge"), help="Prepared loader runtime; defaults to the target's loader")
     parser.add_argument("--shader-pack", type=Path, help="Shader ZIP to install, select and verify with OptiFine")
     parser.add_argument("--property", action="append", default=[], help="Optional lvb.smoke feature assertion")
     parser.add_argument("--render-mode", choices=("enhanced", "native", "off"), default="enhanced")
@@ -242,7 +264,7 @@ def main():
                   args.java, args.property, args.config.resolve() if args.config else None,
                   [p.resolve() for p in args.options], args.shader_pack.resolve() if args.shader_pack else None,
                   args.render_mode, args.native_refresh, args.missing_hook, args.reject_runtime,
-                  [p.resolve() for p in args.api])
+                  [p.resolve() for p in args.api], args.loader)
 
 
 if __name__ == "__main__":

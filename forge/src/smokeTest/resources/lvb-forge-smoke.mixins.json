@@ -1,0 +1,20 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "io.github.metaconscious.lvb.forge.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "lvb-forge-smoke.refmap.json",
+  "client": [
+    "BlockModelRendererSmokeTestMixin",
+    "WorldRendererSmokeTestMixin",
+    "HitboxSmokeTestMixin",
+    "HighlightSmokeTestMixin",
+    "BarrierRendererSmokeTestMixin",
+    "GameRendererSmokeTestMixin",
+    "NativeConflictSmokeTestMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "plugin": "io.github.metaconscious.lvb.forge.SmokeTestPlugin"
+}
