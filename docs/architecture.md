@@ -1,9 +1,9 @@
 # Architecture
 
-The build has four module boundaries: core, shared resources, Legacy Fabric and Ornithe.
-Ornithe has two generation projects beneath its shared adapter project, giving six Gradle
-projects and a small included `build-logic` build. They produce three alternative client
-distributions for Minecraft 1.8.9. Each distribution contains the same core classes and assets.
+The build separates the Java domain, shared client persistence, resources and mapped
+loader adapters. Legacy Fabric and both Ornithe generations use the root multi-project
+build. Forge uses an included build with its own Loom plugin classpath. The four
+installable distributions embed the same core, persistence classes and assets.
 
 ## Architecture
 
@@ -19,10 +19,17 @@ coalesces native geometry refresh decisions.
 flowchart LR
     LF[Legacy Fabric adapter] --> C[Core]
     O[Ornithe adapter] --> C
+    F[Forge adapter] --> C
+    LF --> S[Client support]
+    O --> S
+    F --> S
+    S --> C
     LF --> R[Shared resources]
     O --> R
+    F --> R
     LF --> LFA[Legacy Fabric API / Minecraft]
     O --> OSL[OSL / Minecraft]
+    F --> FA[Forge / Minecraft]
 ```
 
 ## Modules
@@ -30,15 +37,16 @@ flowchart LR
 | Project | Contents | Production dependencies |
 | --- | --- | --- |
 | `core` | Visibility, rendering policy, preferences, edit drafts and translucent ordering | Java standard library |
+| `client-support` | Atomic settings persistence, conflict detection and repair | Core, Java standard library |
 | `shared-resources` | Nine translations, icon, barrier models and texture | None |
-| `legacy-fabric` | Client entrypoint, settings screen and persistence, rendering adapters, Mixins, metadata | Core, resources, Legacy Fabric API, Fabric Loader, Minecraft |
-| `ornithe` | Shared bootstrap, settings persistence, vertex-origin contract and test helpers | Core; compile-only Fabric Loader, Mixin, ASM and logging APIs |
-| `ornithe:gen1`, `ornithe:gen2` | Client entrypoints, settings screens, rendering adapters, Mixins, metadata | Core, shared Ornithe classes, resources, generation-specific OSL and Minecraft |
+| `legacy-fabric` | Client entrypoint, settings screen, rendering adapters, Mixins, metadata | Core, client support, resources, Legacy Fabric API, Fabric Loader, Minecraft |
+| `ornithe` | Shared bootstrap, vertex-origin contract and test helpers | Core, client support; compile-only Fabric Loader, Mixin, ASM and logging APIs |
+| `ornithe:gen1`, `ornithe:gen2` | Client entrypoints, settings screens, rendering adapters, Mixins, metadata | Core, client support, shared Ornithe classes, resources, generation-specific OSL and Minecraft |
+| `forge` (included build `lvb-forge`) | Forge lifecycle, settings factory, MCP rendering adapters, Mixins and metadata | Core, client support, resources, Forge, Minecraft; embedded Mixin runtime |
 
 `shared-resources` exposes a resource archive through a consumable Gradle configuration.
-Adapters consume it through project dependencies. Core classes are embedded directly
-in each adapter JAR before remapping. Neither the core archive nor the resource archive
-is installed separately. Each adapter exposes its `remapJar` output for distribution
+Adapters consume it through project dependencies. Core and client-support classes are embedded directly
+in each adapter JAR before remapping. These shared archives are not installed separately. Each adapter exposes its `remapJar` output for distribution
 verification and staging.
 The shared Ornithe classes are embedded in both Ornithe distributions. Its test fixtures
 are embedded only in the smoke-test JARs. Adapter metadata templates live in
@@ -48,6 +56,23 @@ Build conventions configure Java 8 compilation, Java 8 tests, reproducible archi
 ordering, and adapter packaging. Loader plugins apply only to adapter projects. The
 root build aggregates checks and distributions; it contains no mod sources.
 
+Essential Loom 1.15.51 and Fabric Loom share implementation package names. The Forge
+included build isolates their plugin classloaders while retaining Gradle 9.2.1, JDK 21
+and Java 8 output. Composite dependencies consume core, client support and resources
+from their existing projects; no source directory is owned by two projects. Forge
+remaps MCP stable 22 names to SRG. Its production launcher fixture uses Forge 2318's
+published library list and the original Minecraft client. Development tasks explicitly
+start the Mixin tweaker and use the same filtered Java 8 provider. They stage classes
+and resources into one FML mod directory so language domains are discovered without
+overlapping compiler and resource-task outputs.
+
+The Forge JAR embeds the LaunchWrapper runtime from upstream Mixin 0.8.7 and its MIT
+license. Its manifest registers the tweaker and configuration before Minecraft loads.
+No Essential mod or runtime download is required. Forge Mixins contain no lambdas or
+method references: copying those instructions requires ASM methods absent from Forge's
+ASM 5.0.3. Ordinary Java 8 adapter classes own such callbacks. The artifact verifier
+checks this boundary and excludes newer ModLauncher classes from the distribution.
+
 Committed daemon JVM criteria select JDK 21 for both command-line and IDE builds.
 Each settings build configures toolchain provisioning, so the included build can resolve
 its compiler independently and the main build can provision the Java 8 test runtime.
@@ -56,7 +81,7 @@ its compiler independently and the main build can provision the Java 8 test runt
 
 `gradle/targets.json` defines each distribution's Gradle project, mapping generation,
 dependencies, output directory and bootstrap sentinels. A single build compiles all
-three targets. Ornithe outputs live in `ornithe/gen1/build` and `ornithe/gen2/build`.
+four targets. Ornithe outputs live in `ornithe/gen1/build` and `ornithe/gen2/build`.
 
 Both Ornithe generations have independent Loom projects, source roots, Minecraft
 classpaths, OSL dependencies, run directories and refmaps. IntelliJ imports both at once.
@@ -64,9 +89,14 @@ Minecraft-facing classes belong to their generation even where the mapped Java s
 is identical. Shared Ornithe classes and test helpers have no Minecraft dependency and
 are compiled once in the parent project. Each physical Java source root has one IDE owner.
 Each target compiles and remaps against its own Feather and Calamus artifacts.
-Core logic and shared resources are generation-independent.
+Core logic, client support and shared resources are generation-independent.
+`gradle/runtime-profiles.json` pins Quilt's launcher libraries. Quilt uses the same
+Ornithe distribution and generation-specific APIs; it does not introduce another
+mapped source project or artifact.
+Production client fixtures use published intermediary JARs, preserving the generation
+manifest read by mapping translators such as Flap.
 
-Before selecting rendering hooks, `RenderingPlugin` uses Fabric Loader's public
+Before selecting rendering hooks, the Fabric-compatible `RenderingPlugin` uses the loader's public
 mapping resolver to check two official-to-intermediary class identities against the
 packaged target metadata. This works in named development and intermediary production
 launches without loading Minecraft classes. A mismatch aborts bootstrap with the
@@ -91,8 +121,8 @@ and native invalidation on the client thread.
 
 `RenderingPreferences` validates the two startup settings and resolves JVM overrides
 before file values. `SettingsDraft` owns edits and dirty/reset behavior. Both are pure
-Java core types. The adapter's `SettingsFile` owns UTF-8 properties parsing and writes;
-shared Ornithe code contains no mapped Minecraft or screen types.
+Java core types. `client-support` owns UTF-8 properties parsing and atomic writes through `SettingsFile`.
+It has no loader or Minecraft dependency.
 
 Each mapping target owns a native `SettingsScreen`. A fresh screen holds a saved
 snapshot and an independent draft, retained through resize and Controls navigation.
@@ -108,9 +138,14 @@ replacement failure leaves the original in place and the draft available for ret
 External edits require reloading the file. Opening or cancelling the screen never
 writes configuration.
 
+Forge's `SettingsGuiFactory` supplies the same settings screen to its built-in Mods
+screen through `IModGuiFactory`. `ForgeClient` registers controls and one END-phase tick
+subscriber. Settings storage stays in `client-support`; only the adapter knows Forge's
+configuration directory and metadata.
+
 `ModMenuIntegration` is a separate, lazily requested custom entrypoint. Only that class
 references the optional provider API; normal client and bootstrap signatures do not.
-Each adapter compiles against its matching released Mod Menu with transitive resolution
+Legacy Fabric and Ornithe compile against their matching released Mod Menu with transitive resolution
 disabled. Mod Menu is neither bundled nor required to start LVB. Production client
 checks run with the provider absent and with each pinned supported build. An unbound
 settings key provides an independent in-world entry route.
@@ -131,6 +166,12 @@ mode, visible barriers use model render type `3` and the translucent terrain lay
 | Successful block change | `Chunk.getBlockState(BlockPos, BlockState)` | `WorldChunk.setBlockState(BlockPos, BlockState)` |
 | Chunk packet applied | `Chunk.method_3895(byte[], int, boolean)` | `WorldChunk.update(byte[], int, boolean)` |
 | Section replacement | `Chunk.setLevelChunkSections(ChunkSection[])` | `WorldChunk.setSections(WorldChunkSection[])` |
+
+Forge's MCP equivalents are `EntityRenderer.renderWorldPass(...)`,
+`RenderGlobal.renderBlockLayer(...)`, `ChunkRenderContainer.renderChunkLayer(...)`,
+`CompiledChunk.setState(...)`, and `Chunk.setBlockState/fillChunk/setStorageArrays(...)`.
+Its tick coordinator uses `RenderGlobal.markBlockRangeForRenderUpdate(...)` for native
+refresh. These hooks implement the same lifecycle and draw contracts below.
 
 Each chunk owns its barrier positions. Block changes update individual entries; bulk
 data changes rebuild that chunk's index from its nonempty sections. The renderer reads
@@ -262,6 +303,9 @@ stale references. Visibility changes never mutate world data. Enhanced toggles p
 no chunk rebuild, terrain reload, or non-barrier model submission; native toggles use
 the configured terrain refresh policy.
 
+Core and client support depend only on JDK types and each other in the declared direction.
+Artifact checks reject Minecraft, Mixin and loader references in these shared classes.
+
 Core tests cover visibility, mode transitions, refresh coalescing, thread ownership, draw ordering and preference/draft decisions. Focused file tests cover unknown keys, UTF-8, failed writes, external edits and explicit repair. Client UI checks cover optional entrypoints, keyboard editing, resize, Save/Cancel and runtime-state isolation. Client smoke tests
 compare water/glass overlap with a shared reference batch and verify barrier-only pixel
 changes, compiled terrain submission, frame hooks, lifecycle updates and
@@ -270,7 +314,7 @@ features. Separate client launches exercise native hook isolation, off mode and 
 competing redirect that removes the enhanced terrain hook. A contained failure fixture
 checks graphics cleanup, one-way handover and shared-model unavailability. Wrong-generation
 launches must stop at the bootstrap guard before Minecraft initialization. Artifact checks
-enforce module isolation, target metadata, intermediary type references, remapped Mixin
+enforce module isolation, target metadata, production namespace type references, remapped Mixin
 references, assets, Java 8 bytecode and exclusion of test classes.
 
 Public guarantees and versioning policy are defined in [compatibility.md](compatibility.md).

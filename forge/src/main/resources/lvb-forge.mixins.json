@@ -1,0 +1,21 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "io.github.metaconscious.lvb.forge.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "lvb-forge.refmap.json",
+  "client": [
+    "BarrierBlockMixin",
+    "BarrierParticleMixin",
+    "BlockStateMapperMixin",
+    "ChunkMixin",
+    "GameRendererMixin",
+    "WorldRendererMixin",
+    "ChunkRenderListAccess",
+    "TranslucentMeshMixin",
+    "BufferBuilderMixin",
+    "VertexStateMixin"
+  ],
+  "injectors": { "defaultRequire": 1 },
+  "plugin": "io.github.metaconscious.lvb.forge.RenderingPlugin"
+}

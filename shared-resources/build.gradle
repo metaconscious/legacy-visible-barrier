@@ -1,5 +1,8 @@
 plugins { id 'base' }
 
+group = 'io.github.metaconscious.mod'
+version = providers.gradleProperty('mod_version').get()
+
 def resourcesJar = tasks.register('resourcesJar', Jar) {
     from layout.projectDirectory.dir('src/main/resources')
     archiveBaseName = 'legacy-visible-barrier-resources'
@@ -12,6 +15,7 @@ configurations {
     resourceElements {
         canBeConsumed = true
         canBeResolved = false
+        attributes.attribute(Attribute.of('io.github.metaconscious.lvb.content', String), 'resources')
     }
 }
 

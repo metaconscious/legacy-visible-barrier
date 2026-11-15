@@ -2,7 +2,7 @@
 
 ## Supported environments
 
-All three artifacts target the Minecraft **1.8.9 client**, using Java 8 bytecode. Java 8 is
+All four artifacts target the Minecraft **1.8.9 client**, using Java 8 bytecode. Java 8 is
 the runtime baseline. Building uses JDK 21 and runs the core tests on JDK 8.
 
 | Artifact | Mapping environment | Loader used to build | Required API |
@@ -10,18 +10,32 @@ the runtime baseline. Building uses JDK 21 and runs the core tests on JDK 8.
 | `+legacy-fabric` | Legacy Fabric intermediary generation 1; Yarn build 568 | Fabric Loader 0.16.13 | Legacy Fabric API 1.11.1+1.8.9 or compatible later version |
 | `+ornithe` | Calamus generation 1; Feather build 28 | Fabric Loader 0.18.1 | OSL 0.16.3, including keybinds 0.1.3 and lifecycle-events 0.5.6 |
 | `+ornithe.gen2` | Calamus generation 2; Feather Gen2 build 2 | Fabric Loader 0.18.1 | OSL Gen2 0.17.1 or compatible later Gen2 version |
+| `+forge` | SRG; MCP stable 22 development names | Forge 11.15.1.2318 | None; Mixin 0.8.7 is embedded |
 
 Legacy Fabric metadata retains its existing loader minimum of 0.14.19. Ornithe metadata
 requires loader 0.18.1. Gen1 declares OSL core 0.6.0, entrypoints 0.4.3, keybinds 0.1.3,
 lifecycle-events 0.5.6 and resource-loader 0.5.4. Gen2 declares core 0.7.0, entrypoints
 0.5.0, keybinds 0.2.0, lifecycle-events 0.6.0 and resource-loader 0.6.0.
 Install the API distribution matching the selected mapping environment. Legacy Fabric's
-own intermediary generation 2 and Quilt are outside this release's support matrix.
+own intermediary generation 2 is outside this release's support matrix.
 
 Use an Ornithe Gen2 launcher profile for `+ornithe.gen2`; the
 [official profile](https://meta.ornithemc.net/v3/versions/gen2/fabric-loader/1.8.9/0.18.1/profile/json)
 enables Fabric's package-access fix. LVB rejects a mismatched mapping generation before enabling
 rendering hooks. Native mode cannot make a JAR built for another generation compatible.
+
+Ornithe Gen1 and Gen2 also run on Quilt Loader **0.30.2**, using the same LVB artifact
+and matching OSL distribution. Use the official Ornithe Quilt
+[Gen1 profile](https://meta.ornithemc.net/v3/versions/gen1/quilt-loader/1.8.9/0.30.2/profile/json)
+or [Gen2 profile](https://meta.ornithemc.net/v3/versions/gen2/quilt-loader/1.8.9/0.30.2/profile/json).
+Gen2 needs `-Dloader.fixPackageAccess=true`; both profiles identify Minecraft with
+`-Dloader.gameVersion=1.8.9`. Quilt's Fabric compatibility layer supplies the existing
+entrypoints and loader API. No Quilt-specific LVB JAR or QSL dependency is needed.
+
+Forge uses its own `+forge` distribution, without Fabric Loader, OSL or OptiFabric.
+Its LaunchWrapper bootstrap includes the Java 8 runtime of upstream Mixin 0.8.7.
+Forge's original ASM and Guava libraries are retained. Install LVB as a client mod;
+Forge's built-in **Mods → Legacy Visible Barrier → Config** opens its settings screen.
 
 The mod is client-only. It does not change collision, server state, or world data. All
 artifacts have the same mod ID and are alternative installations.
@@ -106,6 +120,7 @@ The UI labels `auto` and its existing `enhanced` alias as **Automatic**, `native
 | Ornithe Gen2 | [0.4.0+mc1.8.9](https://modrinth.com/mod/modmenu-ornithe/version/dqbY1yZh) | OSL Gen2 baseline |
 | Ornithe Gen2 | [0.5.0+mc1.8.9](https://modrinth.com/mod/modmenu-ornithe/version/71EHHNXc) | Additional OSL localization 0.1.0, text-components 0.1.0-alpha.3 and executors 0.1.0; core 0.9.0 and resource-loader 0.7.2 |
 
+The Ornithe baseline Mod Menu profiles also run on Quilt 0.30.2.
 These UI profiles use Java 8 and the loaders listed above. Exact Minecraft-specific
 module coordinates are pinned in `gradle/targets.json`. The 0.5 profile's additional
 libraries belong to that test profile; LVB's required API versions remain unchanged.
@@ -151,12 +166,42 @@ reloads and world changes:
 | Ornithe Gen1 | AxolotlClient 3.1.8, Waypoints 0.0.3, Kabo Village Marker 1.3.0 and legacy-lwjgl3 1.2.10, Java 21 | Custom outlines, waypoint labels and village markers. |
 
 The baseline checks cover enhanced, native, off and competing-hook recovery on all
-three production targets, including contained runtime failure and lifecycle handling.
+four production targets, including contained runtime failure and lifecycle handling.
 Development profiles also exercise the explicit full-reload option.
 
 The Gen1 Kabo build requires the Minecraft 1.8.9 variants of OSL networking 0.8.0 and config 0.5.2.
 The Gen1 AxolotlClient/Waypoints combination requires OSL networking and legacy-lwjgl3
 newer than 1.2.8. These dependencies are additional to LVB's baseline APIs.
+
+### Tested Forge combinations
+
+These profiles use Forge **11.15.1.2318** and Java 8. They exercise the installed Forge
+JAR, settings factory, barrier/terrain ordering, graphics-state recovery, resource
+reloads and world changes.
+
+| Mods | Modes | Enabled features |
+| --- | --- | --- |
+| [OptiFine HD U M5](https://optifine.net/downloads) | Enhanced and native | Render Regions, shaders off, Fast Render off, anisotropic filtering 16×; hitboxes and block outlines. |
+| OptiFine HD U M5 and [BSL 10.1.8](https://modrinth.com/shader/bsl-shaders/version/Y68yiql9) | Enhanced and native | External shader pack active, Render Regions, Fast Render off, anisotropic filtering 1×. |
+| [Essential 1.5.2](https://essential.gg/downloads) | Enhanced | Default configuration and Essential's Mixin provider. |
+| [Patcher 1.8.9](https://sk1er.club/mods/patcher), Essential 1.5.2 and OptiFine HD U M5 | Enhanced and native | Default mod settings; shared Mixin bootstrap and terrain rendering. |
+
+Forge's OptiFine installation uses the original OptiFine JAR directly. OptiFabric belongs
+to the Fabric-compatible environments. Essential is optional for the ordinary Forge
+installation; the packaged Mixin runtime starts LVB independently.
+
+### Forge with LiteLoader
+
+The Forge artifact passed enhanced and native rendering checks with LiteLoader
+`1.8.9-20260727.184607-11-release`, Essential **1.5.2** and
+[ItemDash 1.0](https://github.com/MineLittlePony/ItemDash/releases/tag/1.0).
+ItemDash initialized through LiteLoader while LVB used Forge's lifecycle and settings
+integration. This combination uses Essential's `0.2.0+mixin.0.8.7` provider.
+
+The same LiteLoader runtime without the modern provider selects its bundled Mixin
+**0.5.3**. LVB's required Mixin configuration rejects that version before Minecraft
+starts, including with native rendering selected. Use the tested provider combination
+or a Forge-only instance. LVB has no standalone `.litemod` distribution.
 
 ### Tested Ornithe Gen2 combinations
 
@@ -176,6 +221,16 @@ Java 8 baseline is unchanged.
 
 The OptiFabric build tested above targets Calamus Gen1. Its shader results do not apply
 to the Gen2 distribution.
+
+### Flap
+
+[Flap](https://wiki.ornithemc.net/wiki/Flap) 0.0.8 passed enhanced and native rendering
+checks with the matching `+ornithe.gen2` artifact, Fabric Loader 0.18.1, the OSL Gen2
+baseline and Java 8.
+
+Translating the Gen1 LVB artifact into Gen2 with Flap 0.0.8 fails JVM bytecode
+verification while Flap rewrites the mapping-resolver calls in LVB's bootstrap.
+Install `+ornithe.gen2` directly in Gen2 instances.
 
 ### Known conflicts
 
@@ -212,7 +267,7 @@ checks with supplied mod JARs and configurations.
 | Native rendering | Normal terrain meshes; coalesced dirty-region updates by default, with optional full reload |
 | Recovery | Preserve visibility intent; latch native mode after a contained enhanced failure, or report unavailability after a detected shared model failure |
 | Input outside a world | Consumed without changing state or sending feedback |
-| Metadata | Client environment, explicit game/Java/API requirements, CC0-1.0 license |
+| Metadata | Client environment, explicit game and loader/API requirements; LVB uses CC0-1.0, embedded Forge Mixin uses MIT |
 
 ## Semantic versioning
 
@@ -223,11 +278,11 @@ Releases follow [Semantic Versioning 2.0.0](https://semver.org/):
 - **Minor:** compatible functionality, deprecations, or substantial internal improvements.
 - **Patch:** compatible fixes.
 
-`mod_version` is the single release version, such as `1.3.0`. Artifact versions add build
-metadata: `1.3.0+legacy-fabric`, `1.3.0+ornithe` and `1.3.0+ornithe.gen2`.
+`mod_version` is the single release version, such as `1.5.0`. Artifact versions add build
+metadata: `1.5.0+legacy-fabric`, `1.5.0+ornithe`, `1.5.0+ornithe.gen2` and `1.5.0+forge`.
 These have equal SemVer precedence.
 The full artifact version is identical in the filename, mod metadata, and release manifest.
-The Git tag is `v1.3.0`. A prerelease uses, for example, `1.3.0-rc.1+ornithe`.
+The Git tag is `v1.5.0`. A prerelease uses, for example, `1.5.0-rc.1+ornithe`.
 
 Build metadata identifies the platform; it is not a substitute for a version increment
 when fixing a published binary. Published tags and artifacts are immutable. Internal

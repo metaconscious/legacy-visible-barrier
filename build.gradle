@@ -19,7 +19,9 @@ group = 'io.github.metaconscious.mod'
 version = providers.gradleProperty('mod_version').get()
 
 ext.targetCatalog = new JsonSlurper().parse(file('gradle/targets.json'))
-def adapterProjects = targetCatalog.values()*.project
+ext.runtimeProfiles = new JsonSlurper().parse(file('gradle/runtime-profiles.json'))
+def adapterProjects = targetCatalog.values().findAll { it.project }*.project
+def forgeBuild = gradle.includedBuild('lvb-forge')
 
 subprojects {
     plugins.withId('lvb.adapter-conventions') {
@@ -50,6 +52,8 @@ subprojects {
                         .collect { it.copy() }
                 def mods = configurations.detachedConfiguration(*dependencies).resolve()
                 def minecraft = loom.minecraftProvider
+                def productionClasspath = (sourceSets.smokeTest.runtimeClasspath.files -
+                        [loom.mappingConfiguration.tinyMappingsJar.toFile()]) + configurations.verificationMappings.files
                 def launch = [
                         platform: target.platform,
                         target: targetId,
@@ -59,7 +63,7 @@ subprojects {
                                   namespace: target.mapping_family, build: target.mapping_build],
                         jvm_args: target.jvm_args ?: [],
                         java: tasks.named('runSmokeTest').get().javaLauncher.get().executablePath.asFile.path,
-                        classpath: sourceSets.smokeTest.runtimeClasspath.files.collect { it.path },
+                        classpath: productionClasspath.collect { it.path },
                         core: configurations.bundledCore.singleFile.path,
                         bundled: (configurations.bundledCore + configurations.bundledAdapter
                                 + configurations.bundledSmokeFixtures).files.collect { it.path },
@@ -79,6 +83,21 @@ subprojects {
                     }
                     launch.menu_additional = [mods: resolveFiles([extra.coordinate]),
                             api: resolveFiles(extra.api_modules.collect { module, revision -> "${target.api_group}:${module}:${revision}" })]
+                }
+                if (target.platform == 'ornithe') {
+                    def replaced = configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts
+                            .findAll { artifact ->
+                                def id = artifact.moduleVersion.id
+                                id.group == 'org.ow2.asm' || id.group == 'net.fabricmc' &&
+                                        id.name in ['fabric-loader', 'sponge-mixin', 'fabric-log4j-util']
+                            }*.file
+                    launch.runtimes = [quilt: [
+                            main_class: runtimeProfiles.quilt.main_class,
+                            classpath: ((productionClasspath - replaced)
+                                    + configurations.quiltRuntime.files).collect { it.path },
+                            jvm_args: ['-Dloader.gameVersion=1.8.9', '-Dloader.disableErrorGui=true'] +
+                                    (target.generation == 2 ? ['-Dloader.fixPackageAccess=true'] : [])
+                    ]]
                 }
                 directory.get().file('launch.json').asFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(launch)) + '\n'
             }
@@ -109,13 +128,17 @@ dependencies {
     adapterProjects.each { path ->
         distributions project(path: path, configuration: 'productionJarElements')
     }
+    distributions("io.github.metaconscious.mod:lvb-forge:${version}+forge") {
+        attributes { attribute(Attribute.of('io.github.metaconscious.lvb.content', String), 'distribution') }
+    }
 }
 
 tasks.register('verifyArtifacts', Exec) {
     group = 'verification'
-    description = 'Builds and checks all three remapped JARs, mappings, core, bytecode and resources.'
+    description = 'Builds and checks every distribution, mappings, core, bytecode and resources.'
     dependsOn configurations.coreArchive, configurations.distributions
     dependsOn adapterProjects.collect { "${it}:prepareVerificationMappings" }
+    dependsOn forgeBuild.task(':prepareVerificationMappings')
     inputs.files(configurations.coreArchive, configurations.distributions)
     inputs.dir 'shared-resources/src/main/resources/assets'
     inputs.files 'tools/verify_artifacts.py', 'tools/versions.py', 'gradle/targets.json'
@@ -139,14 +162,15 @@ tasks.register('verifyArtifacts', Exec) {
 
 tasks.register('verifyDistributions') {
     group = 'verification'
-    description = 'Verifies all three distributions together.'
+    description = 'Verifies all distributions together.'
     dependsOn 'verifyArtifacts'
 }
 
 tasks.register('prepareModCompatibility') {
     group = 'verification'
-    description = 'Prepares production client fixtures for all three distributions.'
+    description = 'Prepares production client fixtures for all distributions and supported loaders.'
     dependsOn adapterProjects.collect { "${it}:prepareModCompatibility" }
+    dependsOn forgeBuild.task(':prepareModCompatibility')
 }
 
 tasks.register('testReleaseTools', Exec) {
@@ -155,12 +179,12 @@ tasks.register('testReleaseTools', Exec) {
     commandLine 'python3', '-m', 'unittest', 'discover', '-s', 'tools/tests', '-v'
 }
 
-tasks.register('smokeTest') {
+tasks.register('smokeTest', Exec) {
     group = 'verification'
-    description = 'Runs all three Minecraft clients in isolated directories; requires a display.'
-    dependsOn(adapterProjects.collectMany { adapter ->
-        ['runSmokeTest', 'runNativeSmokeTest', 'runOffSmokeTest', 'runMissingHookSmokeTest'].collect { "${adapter}:${it}" }
-    })
+    description = 'Runs production client contracts in isolated directories; requires a display.'
+    dependsOn 'prepareModCompatibility'
+    commandLine 'python3', 'tools/verify_clients.py', '--output', layout.buildDirectory.dir('client-tests').get().asFile
+    doFirst { delete layout.buildDirectory.dir('client-tests') }
 }
 
 tasks.register('stageRelease', Exec) {
@@ -182,9 +206,11 @@ tasks.register('stageRelease', Exec) {
 }
 
 tasks.named('check') {
-    dependsOn ':core:check', ':ornithe:check', 'verifyArtifacts', 'testReleaseTools'
+    dependsOn ':core:check', ':client-support:check', ':ornithe:check', 'verifyArtifacts', 'testReleaseTools'
     dependsOn adapterProjects.collect { "${it}:check" }
+    dependsOn forgeBuild.task(':check')
 }
+tasks.named('clean') { dependsOn forgeBuild.task(':clean') }
 tasks.named('assemble') {
     dependsOn configurations.distributions
 }

@@ -19,7 +19,7 @@ def main():
                  for target, info in TARGETS.items()}
     for manifest in manifests.values():
         if not manifest.is_file():
-            parser.error(f"Prepare both Ornithe generations and Legacy Fabric first: {manifest}")
+            parser.error(f"Run prepareModCompatibility first: {manifest}")
     output = args.output.resolve()
     results = []
     for target, manifest in manifests.items():
@@ -30,6 +30,8 @@ def main():
             results.append({"target": target, "profile": mode, "passed": status == 0})
     for target, manifest in manifests.items():
         data = json.loads(manifest.read_text(encoding="utf-8"))
+        if "menu_mods" not in data:
+            continue
         status = launch(manifest, output / target / "mod-menu", list(map(Path, data["menu_mods"])))
         results.append({"target": target, "profile": "mod-menu", "passed": status == 0})
         if "menu_additional" in data:
@@ -37,6 +39,13 @@ def main():
             status = launch(manifest, output / target / "mod-menu-newer", list(map(Path, extra["mods"])),
                             api=list(map(Path, extra["api"])))
             results.append({"target": target, "profile": "mod-menu-newer", "passed": status == 0})
+        if "quilt" in data.get("runtimes", {}):
+            for mode in ("enhanced", "native", "off", "missing-hook"):
+                status = launch(manifest, output / target / ("quilt-" + mode),
+                                list(map(Path, data["menu_mods"])), loader="quilt",
+                                render_mode="enhanced" if mode == "missing-hook" else mode,
+                                missing_hook=mode == "missing-hook")
+                results.append({"target": target, "profile": "quilt-" + mode, "passed": status == 0})
     for target, runtime in (("ornithe", "ornithe.gen2"), ("ornithe.gen2", "ornithe")):
         status = launch(manifests[target], output / target / "wrong-generation", [], runtime_manifest=manifests[runtime])
         results.append({"target": target, "profile": "wrong-generation", "passed": status == 0})

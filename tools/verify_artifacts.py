@@ -11,6 +11,7 @@ from pathlib import Path
 from versions import TARGETS, artifact_version, runtime_dependencies, target_metadata, target_paths
 
 CORE_PACKAGE = "io/github/metaconscious/lvb/core/"
+CLIENT_PACKAGE = "io/github/metaconscious/lvb/client/"
 LOCALES = {"de_DE", "en_US", "es_ES", "fr_FR", "ja_JP", "ko_KR", "ru_RU", "zh_CN", "zh_TW"}
 TRANSLATION_KEYS = {
     'key.category.legacy_visible_barriers',
@@ -134,15 +135,15 @@ def verify_core_classes(classes):
                 require(reference.startswith(("java/", CORE_PACKAGE)),
                         f"Core references a non-JDK type: {name}: {reference}")
             require(not any(prefix in constant for prefix in (
-                "net.minecraft", "net.fabricmc", "net.legacyfabric", "net.ornithemc", "org.spongepowered"
+                "net.minecraft", "net.minecraftforge", "net.fabricmc", "net.legacyfabric", "net.ornithemc", "org.spongepowered"
             )), f"Core contains a platform reference: {name}: {constant}")
 
 
-def verify_mapping_references(classes, refmap, mappings):
+def verify_mapping_references(classes, refmap, mappings, namespace="intermediary"):
     lines = mappings.read_text(encoding="utf-8").splitlines()
     header = lines[0].split("\t")
-    require(header[:3] == ["tiny", "2", "0"] and "intermediary" in header[3:], "Unexpected intermediary mappings")
-    column = 1 + header[3:].index("intermediary")
+    require(header[:3] == ["tiny", "2", "0"] and namespace in header[3:], "Unexpected production mappings")
+    column = 1 + header[3:].index(namespace)
     known = {parts[column] for line in lines[1:] if (parts := line.split("\t"))[0] == "c"}
     references = set()
 
@@ -161,11 +162,41 @@ def verify_mapping_references(classes, refmap, mappings):
     require(not references - known, "Unknown Minecraft mapping references: " + ", ".join(sorted(references - known)))
 
 
+def verify_forge_metadata(jar, version, classes, manifest):
+    metadata = json.loads(jar.read("mcmod.info"))
+    require(len(metadata) == 1 and metadata[0]["modid"] == "lvb", "Forge mod identity changed")
+    metadata = metadata[0]
+    require(metadata["version"] == version and metadata["mcversion"] == "1.8.9", "Forge version contract changed")
+    require(metadata["logoFile"] == "assets/lvb/icon.png", "Forge icon path changed")
+    package = "io/github/metaconscious/lvb/forge/"
+    require(package + "ForgeClient.class" in classes and package + "SettingsGuiFactory.class" in classes,
+            "Forge client or settings factory is missing")
+    require("fabric.mod.json" not in jar.namelist(), "Forge distribution includes Fabric metadata")
+    for key, value in {
+        "TweakClass": "org.spongepowered.asm.launch.MixinTweaker", "TweakOrder": "0",
+        "ForceLoadAsMod": "true", "FMLCorePluginContainsFMLMod": "true", "MixinConfigs": "lvb-forge.mixins.json",
+        "Implementation-Version": version,
+    }.items():
+        require(re.search(r"^" + key + ": " + re.escape(value) + r"\r?$", manifest, re.M),
+                "Forge bootstrap manifest mismatch: " + key)
+    for service, provider in {
+        "IGlobalPropertyService": "Blackboard", "IMixinService": "MixinServiceLaunchWrapper",
+        "IMixinServiceBootstrap": "MixinServiceLaunchWrapperBootstrap",
+    }.items():
+        actual = jar.read("META-INF/services/org.spongepowered.asm.service." + service).decode().strip()
+        require(actual == "org.spongepowered.asm.service.mojang." + provider, "Forge Mixin service mismatch")
+        require(actual.replace(".", "/") + ".class" in classes, "Forge Mixin provider is missing")
+    require("org/spongepowered/asm/launch/MixinTweaker.class" in classes, "Forge Mixin bootstrap is missing")
+    require("MIT License" in jar.read("META-INF/licenses/mixin.txt").decode(), "Mixin license is missing")
+    return metadata
+
+
 def verify_jar(path, target, base, core_classes, assets, mappings=None):
     expected_version = artifact_version(base, target)
     require(path.name == f"legacy-visible-barrier-{expected_version}.jar", f"Unexpected artifact name: {path.name}")
-    package = "legacyfabric" if target == "legacy-fabric" else "ornithe"
-    entrypoint = "LegacyFabricClient" if target == "legacy-fabric" else "OrnitheClient"
+    forge = target == "forge"
+    package = "forge" if forge else "legacyfabric" if target == "legacy-fabric" else "ornithe"
+    entrypoint = "ForgeClient" if forge else "LegacyFabricClient" if target == "legacy-fabric" else "OrnitheClient"
     adapter_package = f"io/github/metaconscious/lvb/{package}/"
     with zipfile.ZipFile(path) as jar:
         names = jar.namelist()
@@ -177,43 +208,61 @@ def verify_jar(path, target, base, core_classes, assets, mappings=None):
                 "Test mod files leaked into the distribution")
         for name, data in classes.items():
             require(data[:4] == b"\xca\xfe\xba\xbe", f"Invalid class file: {name}")
-            require(struct.unpack_from(">H", data, 6)[0] == 52, f"Not Java 8 bytecode: {name}")
-            require(name.startswith((CORE_PACKAGE, adapter_package)), f"Foreign or shaded class: {name}")
+            bundled_mixin = forge and name.startswith("org/spongepowered/asm/")
+            major = struct.unpack_from(">H", data, 6)[0]
+            require(major <= 52 if bundled_mixin else major == 52, f"Not Java 8 bytecode: {name}")
+            require(bundled_mixin or name.startswith((CORE_PACKAGE, CLIENT_PACKAGE, adapter_package)),
+                    f"Foreign or shaded class: {name}")
+            if forge and name.startswith(adapter_package + "mixin/"):
+                require("BootstrapMethods" not in class_strings(data), f"Forge ASM 5 cannot transform lambda Mixins: {name}")
         embedded_core = {name: data for name, data in classes.items() if name.startswith(CORE_PACKAGE)}
         require(set(embedded_core) == set(core_classes), "Embedded core classes are missing or unexpected")
         verify_core_classes(embedded_core)
+        support = {name: data for name, data in classes.items() if name.startswith(CLIENT_PACKAGE)}
+        require(CLIENT_PACKAGE + 'SettingsFile.class' in support, 'Shared settings persistence is missing')
+        for name, data in support.items():
+            for value in class_type_references(data):
+                references = re.findall(r'L([^;<>]+);', value)
+                if not references and '/' in value and not value.startswith(('(', '[')):
+                    references = [value]
+                require(all(reference.startswith(('java/', CORE_PACKAGE, CLIENT_PACKAGE)) for reference in references),
+                        f'Client support references a platform type: {name}: {value}')
 
-        metadata = json.loads(jar.read("fabric.mod.json"))
-        require(metadata["schemaVersion"] == 1 and metadata["id"] == "lvb", "Mod identity changed")
-        require(metadata["version"] == expected_version, "Artifact/metadata version mismatch")
-        require(metadata["environment"] == "client", "Mod must be client-only")
-        require(metadata["license"] == "CC0-1.0", "License metadata changed")
-        require(metadata["icon"] == "assets/lvb/icon.png", "Icon path changed")
-        require(metadata["entrypoints"] == {
-            "client": [f"io.github.metaconscious.lvb.{package}.{entrypoint}"],
-            "modmenu": [f"io.github.metaconscious.lvb.{package}.ModMenuIntegration"]
-        }, "Unexpected entrypoints")
-        require(adapter_package + entrypoint + ".class" in classes, "Entrypoint class is missing")
-        require(adapter_package + "ModMenuIntegration.class" in classes, "Optional menu entrypoint is missing")
-        require(metadata.get("suggests") == {"modmenu": ">=" + TARGETS[target]["mod_menu"]["minimum"]},
-                "Optional menu dependency contract changed")
-        require(metadata.get("breaks", {}) == ({"modmenu": ["0.1.0", "1.0.0"]} if target == "legacy-fabric" else {}),
-                "Known menu incompatibility contract changed")
-        require(metadata["depends"] == runtime_dependencies(target), "Runtime dependency contract changed")
-        require(metadata.get("custom", {}).get("lvb:target") == target_metadata(target), "Mapping target metadata mismatch")
         manifest = jar.read("META-INF/MANIFEST.MF").decode("utf-8").replace("\r\n ", "")
-        generation_key = "Legacy-Fabric-Intermediary-Version" if target == "legacy-fabric" else "Calamus-Generation"
-        require(re.search(r"^" + generation_key + ": " + str(TARGETS[target]["generation"]) + r"\r?$", manifest, re.M),
-                "Remapped JAR generation mismatch")
-
+        if forge:
+            metadata = verify_forge_metadata(jar, expected_version, classes, manifest)
+        else:
+            metadata = json.loads(jar.read("fabric.mod.json"))
+            require(metadata["schemaVersion"] == 1 and metadata["id"] == "lvb", "Mod identity changed")
+            require(metadata["version"] == expected_version, "Artifact/metadata version mismatch")
+            require(metadata["environment"] == "client", "Mod must be client-only")
+            require(metadata["license"] == "CC0-1.0", "License metadata changed")
+            require(metadata["icon"] == "assets/lvb/icon.png", "Icon path changed")
+            require(metadata["entrypoints"] == {
+                "client": [f"io.github.metaconscious.lvb.{package}.{entrypoint}"],
+                "modmenu": [f"io.github.metaconscious.lvb.{package}.ModMenuIntegration"]
+            }, "Unexpected entrypoints")
+            require(adapter_package + entrypoint + ".class" in classes, "Entrypoint class is missing")
+            require(adapter_package + "ModMenuIntegration.class" in classes, "Optional menu entrypoint is missing")
+            require(metadata.get("suggests") == {"modmenu": ">=" + TARGETS[target]["mod_menu"]["minimum"]},
+                    "Optional menu dependency contract changed")
+            require(metadata.get("breaks", {}) == ({"modmenu": ["0.1.0", "1.0.0"]} if target == "legacy-fabric" else {}),
+                    "Known menu incompatibility contract changed")
+            require(metadata["depends"] == runtime_dependencies(target), "Runtime dependency contract changed")
+            require(metadata.get("custom", {}).get("lvb:target") == target_metadata(target), "Mapping target metadata mismatch")
+            manifest = jar.read("META-INF/MANIFEST.MF").decode("utf-8").replace("\r\n ", "")
+            generation_key = "Legacy-Fabric-Intermediary-Version" if target == "legacy-fabric" else "Calamus-Generation"
+            require(re.search(r"^" + generation_key + ": " + str(TARGETS[target]["generation"]) + r"\r?$", manifest, re.M),
+                    "Remapped JAR generation mismatch")
         config_name = f"lvb-{TARGETS[target]['platform']}.mixins.json"
-        require(metadata["mixins"] == [config_name], "Mixin config mismatch")
+        if not forge:
+            require(metadata["mixins"] == [config_name], "Mixin config mismatch")
         mixins = json.loads(jar.read(config_name))
         require(mixins["required"] and mixins["compatibilityLevel"] == "JAVA_8", "Mixin requirements changed")
         require(not mixins.get("mixins") and not mixins.get("server"), "Mixins must be client-only")
         expected_mixins = {"BarrierBlockMixin", "BarrierParticleMixin", "ChunkMixin", "GameRendererMixin",
                            "WorldRendererMixin", "ChunkRenderListAccess", "TranslucentMeshMixin", "BufferBuilderMixin", "VertexStateMixin",
-                           "BlockStateMapperMixin" if target == "legacy-fabric" else "BlockModelsMixin"}
+                           "BlockStateMapperMixin" if target in ("legacy-fabric", "forge") else "BlockModelsMixin"}
         require(set(mixins["client"]) == expected_mixins, "Unexpected client Mixins")
         require(mixins.get("plugin") == adapter_package.replace("/", ".") + "RenderingPlugin",
                 "Rendering profile plugin is missing")
@@ -225,7 +274,8 @@ def verify_jar(path, target, base, core_classes, assets, mappings=None):
         require(mixins["refmap"] == f"lvb-{target}.refmap.json", "Refmap target mismatch")
         require(refmap.get("mappings"), "Remapped Mixin references are missing")
         if mappings:
-            verify_mapping_references(classes, refmap, mappings)
+            own_classes = {name: data for name, data in classes.items() if name.startswith('io/github/metaconscious/lvb/')}
+            verify_mapping_references(own_classes, refmap, mappings, "srg" if forge else "intermediary")
 
         expected_assets = {"assets/" + p.relative_to(assets).as_posix(): p.read_bytes()
                            for p in assets.rglob("*") if p.is_file()}
@@ -249,7 +299,9 @@ def verify_jar(path, target, base, core_classes, assets, mappings=None):
             "sha512": hashlib.sha512(path.read_bytes()).hexdigest(), "size": path.stat().st_size,
             "class_count": len(classes), "core_class_count": len(core_classes),
             "core_sha512": hashlib.sha512(b"".join(embedded_core[n] for n in sorted(embedded_core))).hexdigest(),
-            "asset_count": len(actual_assets), "class_major_version": 52, "generation": TARGETS[target]["generation"]}
+            "support_sha512": hashlib.sha512(b"".join(support[n] for n in sorted(support))).hexdigest(),
+            "asset_count": len(actual_assets), "class_major_version": 52, "mapping_namespace": TARGETS[target]["mapping_family"],
+            **({"generation": TARGETS[target]["generation"]} if "generation" in TARGETS[target] else {})}
 
 
 def main():
@@ -262,12 +314,14 @@ def main():
     parser.add_argument("--mappings", action="append", required=True, help="TARGET=TINY; repeat for each target")
     args = parser.parse_args()
     jars, mappings = target_paths(args.artifact), target_paths(args.mappings)
-    require(set(jars) == set(mappings), "Each artifact needs its intermediary mappings")
+    require(set(jars) == set(mappings), "Each artifact needs its production mappings")
     core = verify_core(args.core)
     reports = [verify_jar(jar, target, args.base_version, core, args.assets, mappings[target])
                for target, jar in jars.items()]
     require(len({report["core_sha512"] for report in reports}) == 1,
             "Embedded core differs between mapping environments")
+    require(len({report["support_sha512"] for report in reports}) == 1,
+            "Shared settings persistence differs between distributions")
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(reports, indent=2) + "\n", encoding="utf-8")
     for report in reports:

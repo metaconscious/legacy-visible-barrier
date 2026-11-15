@@ -91,6 +91,40 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(0, code)
         self.assertEqual(["fixture", "api-extra"], [mod["id"] for mod in result["mods"]])
 
+    def test_loader_profiles_select_the_production_launcher(self):
+        original = json.loads(self.manifest.read_text())
+        library = self.root / 'forge-universal.jar'
+        with zipfile.ZipFile(library, 'w') as archive:
+            archive.writestr('mcmod.info', '[{"modid":"forge","version":"2318"}]')
+        for loader, main, arguments in (
+                ('quilt', 'org.quiltmc.loader.impl.launch.knot.KnotClient', []),
+                ('forge', 'net.minecraft.launchwrapper.Launch', ['--tweakClass', 'net.minecraftforge.fml.common.launcher.FMLTweaker'])):
+            with self.subTest(loader=loader):
+                self.profile = self.root / loader
+                data = dict(original)
+                runtime = dict(main_class=main, classpath=[str(library)], launch_args=arguments)
+                if loader == 'forge':
+                    data.update(runtime, loader=loader, platform='forge')
+                    self.client['platform'] = 'forge'
+                    self.client['assertions'].append('forge-config-screen')
+                    with zipfile.ZipFile(self.mod, 'w') as archive:
+                        archive.writestr('mcmod.info', '[{"modid":"fixture","version":"1.0.0"}]')
+                else:
+                    data['runtimes'] = {loader: runtime}
+                self.manifest.write_text(json.dumps(data))
+                with patch.object(runner.subprocess, 'run', side_effect=self.client_process) as process:
+                    self.assertEqual(0, runner.launch(self.manifest, self.profile, [], loader=loader))
+                command = process.call_args.args[0]
+                self.assertEqual(main, command[command.index('-cp') + 2])
+                self.assertEqual(arguments, command[command.index(main) + 1:command.index('--version')])
+                if loader == 'forge':
+                    self.assertIn(str(library), command[command.index('-cp') + 1].split(os.pathsep))
+                result = json.loads((self.profile / 'result.json').read_text())
+                self.assertEqual('fixture', result['mods'][0]['id'])
+        with self.assertRaisesRegex(ValueError, 'No prepared quilt runtime'):
+            runner.launch(self.manifest, self.root / 'unsupported', [], loader='quilt')
+        self.assertFalse((self.root / 'unsupported').exists())
+
     def test_wrong_generation_exits_without_an_error_dialog(self):
         runtime = self.root / "other-generation.json"
         data = json.loads(self.manifest.read_text())

@@ -1,5 +1,7 @@
 package io.github.metaconscious.lvb.ornithe;
 
+import io.github.metaconscious.lvb.client.SettingsFile;
+
 import io.github.metaconscious.lvb.core.RenderingPolicy;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.entrypoint.EntrypointContainer;
