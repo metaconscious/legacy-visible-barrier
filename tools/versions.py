@@ -12,7 +12,6 @@ SEMVER = re.compile(
     r"(?:\+(?P<build>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
 )
 TARGETS = json.loads((Path(__file__).resolve().parents[1] / "gradle/targets.json").read_text(encoding="utf-8"))
-PROJECT_ID = TARGETS["legacy-fabric"]["modrinth_project"]
 GAME_VERSION = "1.8.9"
 
 
@@ -52,13 +51,6 @@ def artifact_version(base, target):
     if parsed["build"] or target not in TARGETS:
         raise ValueError("The release version must have no build metadata and the target must be supported")
     return f"{base}+{target}"
-
-
-def release_channel(base):
-    prerelease = parse_version(base)["prerelease"]
-    if not prerelease:
-        return "release"
-    return "alpha" if prerelease.split(".")[0] == "alpha" else "beta"
 
 
 def validate_tag(tag, base):

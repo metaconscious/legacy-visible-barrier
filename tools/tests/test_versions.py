@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from versions import artifact_version, changelog_entry, parse_version, release_channel, validate_tag
+from versions import artifact_version, changelog_entry, parse_version, validate_tag
 
 
 class VersionTests(unittest.TestCase):
@@ -34,12 +34,6 @@ class VersionTests(unittest.TestCase):
         for tag in ("1.2.0", "v1.2.1", "v1.2.0+ornithe", "v1.2.0\n"):
             with self.assertRaises(ValueError):
                 validate_tag(tag, "1.2.0")
-
-    def test_prerelease_channels(self):
-        self.assertEqual("release", release_channel("1.2.0"))
-        self.assertEqual("alpha", release_channel("1.2.0-alpha.1"))
-        self.assertEqual("beta", release_channel("1.2.0-beta.1"))
-        self.assertEqual("beta", release_channel("1.2.0-rc.1"))
 
     def test_changelog_selects_only_the_requested_release(self):
         with tempfile.TemporaryDirectory() as directory:

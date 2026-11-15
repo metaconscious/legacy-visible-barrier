@@ -39,8 +39,7 @@ jobs:
         with:
           name: distributions
           path: build/distributions
-      - name: Publish verified artifacts
+      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
         run: python3 tools/release.py publish build/distributions/release.json

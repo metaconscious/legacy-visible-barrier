@@ -50,7 +50,7 @@ its compiler independently and the main build can provision the Java 8 test runt
 ### Mapping targets
 
 `gradle/targets.json` defines each distribution's mapping generation, dependencies,
-output directory, bootstrap sentinels and publication destination. The default build
+output directory and bootstrap sentinels. The default build
 selects Legacy Fabric Gen1 and Ornithe Gen1. `-PlvbOrnitheGeneration=2` selects Ornithe
 Gen2; it leaves Legacy Fabric on its existing generation. Run the two configurations
 sequentially in one checkout. Ornithe outputs live in `build/gen1` and `build/gen2`.

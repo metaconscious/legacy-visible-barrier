@@ -1,4 +1,3 @@
-import copy
 import hashlib
 import io
 import json
@@ -10,51 +9,21 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from release import check_existing, check_github_release, load_manifest, metadata_for, preflight, publish, publish_modrinth
-from versions import PROJECT_ID, TARGETS
+from release import check_github_release, load_manifest, publish, stage
+from versions import TARGETS, artifact_version
 
 
-def record(target):
+def record(target, base="1.3.0"):
     data = b"verified-test-artifact"
-    return {"target": target, "filename": f"legacy-visible-barrier-1.2.0+{target}.jar",
-            "sha512": hashlib.sha512(data).hexdigest(), "size": len(data),
-            "metadata": metadata_for("1.2.0", target, "- Unified build.", "Gen2Fixture")}
+    version = artifact_version(base, target)
+    return {"target": target, "version": version, "filename": f"legacy-visible-barrier-{version}.jar",
+            "sha512": hashlib.sha512(data).hexdigest(), "size": len(data)}
 
 
-def published(artifact):
-    result = copy.deepcopy(artifact["metadata"])
-    result.update(id=f"id-{artifact['target']}", files=[{
-        "filename": artifact["filename"], "size": artifact["size"], "primary": True,
-        "hashes": {"sha512": artifact["sha512"]},
-    }])
-    return result
-
-
-class FakeModrinth:
-    def __init__(self, versions=(), timeout_after_upload=False):
-        self.existing = list(versions)
-        self.created = []
-        self.timeout_after_upload = timeout_after_upload
-
-    def versions(self, records=None):
-        return self.existing
-
-    def create(self, artifact, directory):
-        self.created.append(artifact["target"])
-        result = published(artifact)
-        self.existing.append(result)
-        if self.timeout_after_upload:
-            raise TimeoutError("Response lost after successful upload")
-        return result
-
-    def get(self, version_id):
-        return next(v for v in self.existing if v["id"] == version_id)
-
-
-def write_manifest(directory, records):
-    manifest = {"schema": 1, "repository": "metaconscious/legacy-visible-barrier",
-                "version": "1.2.0", "tag": "v1.2.0", "commit": "a" * 40,
-                "changelog": "- Unified build.", "versions": records}
+def write_manifest(directory, records, base="1.3.0"):
+    manifest = {"schema": 2, "repository": "metaconscious/legacy-visible-barrier",
+                "version": base, "tag": f"v{base}", "commit": "a" * 40,
+                "changelog": "- Unified build.", "artifacts": records}
     path = directory / "release.json"
     path.write_text(json.dumps(manifest), encoding="utf-8")
     for artifact in records:
@@ -74,7 +43,7 @@ class FakeGitHub:
         self.uploaded = []
         self.published = 0
 
-    def __call__(self, *args, allow_missing=False):
+    def __call__(self, *args):
         if args[0] == "api":
             endpoint = args[1]
             if "/commits/" in endpoint:
@@ -95,7 +64,7 @@ class FakeGitHub:
                 raise AssertionError("An existing draft must be resumed without creating another release")
             self.created += 1
             self.existing = {"tag_name": self.manifest["tag"], "name": self.manifest["version"],
-                             "body": self.manifest["changelog"], "prerelease": False,
+                             "body": self.manifest["changelog"], "prerelease": "--prerelease" in args,
                              "draft": True, "assets": []}
         elif args[:2] == ("release", "download"):
             name = args[args.index("--pattern") + 1]
@@ -120,94 +89,30 @@ class PublicationTests(unittest.TestCase):
     def setUp(self):
         self.records = [record(target) for target in TARGETS]
 
-    def test_new_release_has_all_targets_missing(self):
-        self.assertEqual({}, preflight(self.records, []))
-
-    def test_matching_existing_artifact_is_complete(self):
-        self.assertEqual({"legacy-fabric": "id-legacy-fabric"},
-                         preflight(self.records, [published(self.records[0])]))
-
-    def test_variants_publish_as_separate_records(self):
-        client = FakeModrinth()
-        result = publish_modrinth(client, self.records, Path("."), preflight(self.records, client.versions()))
-        self.assertEqual(set(TARGETS), set(result))
-        self.assertEqual(list(TARGETS), client.created)
-
-    def test_partial_release_retries_only_the_missing_target(self):
-        client = FakeModrinth([published(self.records[0])])
-        publish_modrinth(client, self.records, Path("."), preflight(self.records, client.versions()))
-        self.assertEqual(["ornithe", "ornithe.gen2"], client.created)
-
-    def test_complete_release_retry_uploads_nothing(self):
-        client = FakeModrinth([published(v) for v in self.records])
-        publish_modrinth(client, self.records, Path("."), preflight(self.records, client.versions()))
-        self.assertEqual([], client.created)
-
-    def test_duplicate_version_numbers_are_rejected(self):
-        existing = published(self.records[0])
-        with self.assertRaisesRegex(ValueError, "Duplicate"):
-            preflight(self.records, [existing, existing])
-
-    def test_existing_version_with_another_loader_is_rejected(self):
-        existing = published(self.records[0])
-        existing["loaders"] = ["ornithe"]
-        with self.assertRaisesRegex(ValueError, "loaders"):
-            preflight(self.records, [existing])
-
-    def test_existing_file_cannot_be_replaced(self):
-        existing = published(self.records[0])
-        existing["files"][0]["hashes"]["sha512"] = "0" * 128
-        with self.assertRaisesRegex(ValueError, "artifact differs"):
-            preflight(self.records, [existing])
-
-    def test_changed_dependency_cannot_be_published_under_same_version(self):
-        existing = published(self.records[0])
-        existing["dependencies"][0]["project_id"] = "wrong-project"
-        with self.assertRaisesRegex(ValueError, "dependencies differ"):
-            check_existing(self.records[0], existing)
-
-    def test_changed_channel_cannot_be_published_under_same_version(self):
-        existing = published(self.records[0])
-        existing["version_type"] = "beta"
-        with self.assertRaisesRegex(ValueError, "version_type"):
-            check_existing(self.records[0], existing)
-
-    def test_additional_dependency_cannot_be_published_under_same_version(self):
-        existing = published(self.records[0])
-        existing["dependencies"].append({"version_id": "extra-version", "dependency_type": "required"})
-        with self.assertRaisesRegex(ValueError, "dependencies differ"):
-            check_existing(self.records[0], existing)
-
     def test_github_release_metadata_must_match_on_retry(self):
-        manifest = {"version": "1.2.0", "tag": "v1.2.0", "changelog": "- Unified build."}
-        existing = {"tag_name": "v1.2.0", "name": "1.2.0", "body": "- Unified build.", "prerelease": False}
+        manifest = {"version": "1.3.0", "tag": "v1.3.0", "changelog": "- Unified build."}
+        existing = {"tag_name": "v1.3.0", "name": "1.3.0", "body": "- Unified build.", "prerelease": False}
         check_github_release(manifest, existing)
         for field, value in (("tag_name", "v1.1.0"), ("name", "another release"),
                              ("body", "changed notes"), ("prerelease", True)):
             with self.subTest(field=field), self.assertRaisesRegex(ValueError, "metadata differs"):
                 check_github_release(manifest, dict(existing, **{field: value}))
 
-    def test_both_records_are_checked_before_uploading_either(self):
-        existing = published(self.records[1])
-        existing["game_versions"] = ["1.12.2"]
-        client = FakeModrinth([existing])
-        with self.assertRaises(ValueError):
-            completed = preflight(self.records, client.versions())
-            publish_modrinth(client, self.records, Path("."), completed)
-        self.assertEqual([], client.created)
-
-    def test_uncertain_response_is_reconciled_without_duplicate_upload(self):
-        client = FakeModrinth(timeout_after_upload=True)
-        result = publish_modrinth(client, self.records, Path("."), {})
-        self.assertEqual(set(TARGETS), set(result))
-        self.assertEqual(list(TARGETS), client.created)
-
-    def test_manifest_checks_the_actual_artifact_bytes(self):
+    def test_staged_manifest_preserves_all_targets_and_checks_actual_artifact_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
-            manifest_path = write_manifest(path, self.records)
-            self.assertEqual("1.2.0", load_manifest(manifest_path)["version"])
-            (path / self.records[0]["filename"]).write_bytes(b"changed")
+            write_manifest(path, self.records)
+            report = path / "artifacts.json"
+            report.write_text(json.dumps(self.records), encoding="utf-8")
+            (path / "CHANGELOG.md").write_text("## [1.3.0]\n\n- Unified build.\n", encoding="utf-8")
+            output = path / "staged"
+            with (patch("release.ROOT", path),
+                  patch("release.subprocess.check_output", side_effect=["", "a" * 40]),
+                  redirect_stdout(io.StringIO())):
+                stage("1.3.0", report, {r["target"]: path / r["filename"] for r in self.records}, output)
+            manifest_path = output / "release.json"
+            self.assertEqual(self.records, load_manifest(manifest_path)["artifacts"])
+            (output / self.records[0]["filename"]).write_bytes(b"changed")
             with self.assertRaisesRegex(ValueError, "checksum mismatch"):
                 load_manifest(manifest_path)
 
@@ -217,65 +122,42 @@ class PublicationTests(unittest.TestCase):
             manifest_path = write_manifest(path, self.records)
             manifest = load_manifest(manifest_path)
             first_file = self.records[0]["filename"]
-            draft = {"tag_name": "v1.2.0", "name": "1.2.0", "body": manifest["changelog"],
+            draft = {"tag_name": "v1.3.0", "name": "1.3.0", "body": manifest["changelog"],
                      "prerelease": False, "draft": True, "assets": [{"name": first_file}]}
             github = FakeGitHub(manifest, draft, {first_file: (path / first_file).read_bytes()})
-            modrinth = FakeModrinth([published(self.records[0])])
-            with (patch("release.gh", github), patch("release.Modrinth", return_value=modrinth),
-                  redirect_stdout(io.StringIO())):
+            with patch("release.gh", github), redirect_stdout(io.StringIO()):
                 publish(manifest_path)
             self.assertEqual(0, github.created)
             self.assertEqual([r["filename"] for r in self.records[1:]] + ["release.json", "SHA512SUMS"], github.uploaded)
-            self.assertEqual(["ornithe", "ornithe.gen2"], modrinth.created)
             self.assertEqual(1, github.published)
             self.assertFalse(github.existing["draft"])
             for name, data in github.files.items():
                 self.assertEqual((path / name).read_bytes(), data)
 
     def test_first_publication_and_published_release_retry_create_one_release(self):
-        with tempfile.TemporaryDirectory() as directory:
-            manifest_path = write_manifest(Path(directory), self.records)
-            github = FakeGitHub(load_manifest(manifest_path))
-            modrinth = FakeModrinth()
-            with (patch("release.gh", github), patch("release.Modrinth", return_value=modrinth),
-                  redirect_stdout(io.StringIO())):
-                publish(manifest_path)
-                publish(manifest_path)
-            self.assertEqual(1, github.created)
-            self.assertEqual(1, github.published)
-            self.assertEqual([r["filename"] for r in self.records] + ["release.json", "SHA512SUMS"], github.uploaded)
-            self.assertEqual(list(TARGETS), modrinth.created)
-
-    def test_generation_routes_and_dependencies_are_explicit(self):
-        gen1, gen2 = self.records[1]["metadata"], self.records[2]["metadata"]
-        self.assertEqual(["ornithe"], gen2["loaders"])
-        self.assertNotEqual(gen1["project_id"], gen2["project_id"])
-        self.assertEqual("wbCVLcP4", gen1["dependencies"][0]["version_id"])
-        self.assertEqual("PSPwlyvh", gen2["dependencies"][0]["version_id"])
-        with self.assertRaisesRegex(ValueError, "distinct Modrinth"):
-            metadata_for("1.3.0", "ornithe.gen2", "Changes", PROJECT_ID)
-        self.records[2]["metadata"]["project_id"] = None
-        with tempfile.TemporaryDirectory() as directory:
-            path = write_manifest(Path(directory), self.records)
-            with patch("release.gh") as github, patch("release.Modrinth") as modrinth:
-                with self.assertRaisesRegex(ValueError, "MODRINTH_GEN2_PROJECT_ID"):
-                    publish(path)
-                github.assert_not_called()
-                modrinth.assert_not_called()
+        for base in ("1.3.0", "1.3.0-rc.1"):
+            with self.subTest(version=base), tempfile.TemporaryDirectory() as directory:
+                records = [record(target, base) for target in TARGETS]
+                manifest_path = write_manifest(Path(directory), records, base)
+                github = FakeGitHub(load_manifest(manifest_path))
+                with patch("release.gh", github), redirect_stdout(io.StringIO()):
+                    publish(manifest_path)
+                    publish(manifest_path)
+                self.assertEqual(1, github.created)
+                self.assertEqual(1, github.published)
+                self.assertEqual([r["filename"] for r in records] + ["release.json", "SHA512SUMS"], github.uploaded)
+                self.assertEqual(base != "1.3.0", github.existing["prerelease"])
 
     def test_duplicate_github_tags_fail_before_any_publication(self):
         with tempfile.TemporaryDirectory() as directory:
             manifest_path = write_manifest(Path(directory), self.records)
-            github = FakeGitHub(load_manifest(manifest_path), {"tag_name": "v1.2.0", "draft": True})
-            github.extra_releases.append({"tag_name": "v1.2.0", "draft": False})
-            modrinth = FakeModrinth()
-            with (patch("release.gh", github), patch("release.Modrinth", return_value=modrinth),
-                  self.assertRaisesRegex(ValueError, "Multiple GitHub releases")):
+            github = FakeGitHub(load_manifest(manifest_path), {"tag_name": "v1.3.0", "draft": True})
+            github.extra_releases.append({"tag_name": "v1.3.0", "draft": False})
+            with patch("release.gh", github), self.assertRaisesRegex(ValueError, "Multiple GitHub releases"):
                 publish(manifest_path)
             self.assertEqual(0, github.created)
             self.assertEqual([], github.uploaded)
             self.assertEqual(0, github.published)
-            self.assertEqual([], modrinth.created)
 
 
 if __name__ == "__main__":

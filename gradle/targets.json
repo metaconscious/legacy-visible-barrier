@@ -11,9 +11,7 @@
     "api_group": "net.legacyfabric.legacy-fabric-api",
     "api_modules": {"legacy-fabric-api": "1.11.1+1.8.9"},
     "runtime_modules": [],
-    "sentinels": {"ave": "net.minecraft.class_1600", "bfk": "net.minecraft.class_524"},
-    "modrinth_project": "FSLuAotK",
-    "dependency": "9CJED7xi"
+    "sentinels": {"ave": "net.minecraft.class_1600", "bfk": "net.minecraft.class_524"}
   },
   "ornithe": {
     "platform": "ornithe",
@@ -33,10 +31,7 @@
       "resource-loader": "0.5.4+mc13w26a-mc1.10.2"
     },
     "runtime_modules": ["entrypoints", "resource-loader"],
-    "sentinels": {"ave": "net.minecraft.unmapped.C_8105098", "bfk": "net.minecraft.unmapped.C_0259655"},
-    "modrinth_project": "FSLuAotK",
-    "dependency": "EHGtwpJv",
-    "dependency_version": "wbCVLcP4"
+    "sentinels": {"ave": "net.minecraft.unmapped.C_8105098", "bfk": "net.minecraft.unmapped.C_0259655"}
   },
   "ornithe.gen2": {
     "platform": "ornithe",
@@ -57,9 +52,6 @@
       "resource-loader": "0.6.0+mc13w26a-mc1.10.2"
     },
     "runtime_modules": ["entrypoints", "resource-loader"],
-    "sentinels": {"ave": "net.minecraft.client.Minecraft", "bfk": "net.minecraft.unmapped.C_03140863"},
-    "modrinth_project_env": "MODRINTH_GEN2_PROJECT_ID",
-    "dependency": "EHGtwpJv",
-    "dependency_version": "PSPwlyvh"
+    "sentinels": {"ave": "net.minecraft.client.Minecraft", "bfk": "net.minecraft.unmapped.C_03140863"}
   }
 }
