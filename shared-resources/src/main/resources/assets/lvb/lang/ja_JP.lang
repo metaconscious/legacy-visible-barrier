@@ -2,3 +2,6 @@ key.category.legacy_visible_barriers=レガシー可視バリア
 key.toggle_barrier_visibility=バリアの可視性を切り替える
 lvb.to_visible=バリアが表示されるようになりました
 lvb.to_invisible=バリアが表示されなくなりました
+lvb.mode_native=標準のバリア描画を使用中です。地形は順次更新されます
+lvb.unavailable=バリアの可視化を利用できません
+lvb.disabled=バリアの可視化は無効です

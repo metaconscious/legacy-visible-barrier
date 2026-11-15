@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "lvb",
+  "version": "${version}",
+  "name": "Legacy Visible Barrier",
+  "description": "Toggle the visibility of barrier blocks.",
+  "authors": [
+    "Mark Oven",
+    "DaveyL2013"
+  ],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/legacy-visible-barrier",
+    "sources": "https://github.com/metaconscious/legacy-visible-barrier",
+    "issues": "https://github.com/metaconscious/legacy-visible-barrier/issues"
+  },
+  "license": "CC0-1.0",
+  "icon": "assets/lvb/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "io.github.metaconscious.lvb.ornithe.OrnitheClient"
+    ]
+  },
+  "mixins": [
+    "lvb-ornithe.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loaderMinimum}",
+    "minecraft": "${minecraftVersion}",
+    "java": ">=8",
+    "osl-core": "${apiMinimums['osl-core']}",
+    "osl-entrypoints": "${apiMinimums['osl-entrypoints']}",
+    "osl-keybinds": "${apiMinimums['osl-keybinds']}",
+    "osl-lifecycle-events": "${apiMinimums['osl-lifecycle-events']}",
+    "osl-resource-loader": "${apiMinimums['osl-resource-loader']}"
+  },
+  "custom": {"lvb:target": {
+    "id": "${targetId}",
+    "name": "${targetName}",
+    "sentinels": {"ave": "${sentinels.ave}", "bfk": "${sentinels.bfk}"}
+  }}
+}

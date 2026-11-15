@@ -2,3 +2,6 @@ key.category.legacy_visible_barriers=Устаревший Видимый Бар�
 key.toggle_barrier_visibility=Переключить Видимость Барьера
 lvb.to_visible=Барьеры теперь видимы
 lvb.to_invisible=Барьеры больше не видимы
+lvb.mode_native=Используется стандартная отрисовка барьеров; местность обновляется постепенно
+lvb.unavailable=Визуализация барьеров недоступна
+lvb.disabled=Визуализация барьеров отключена

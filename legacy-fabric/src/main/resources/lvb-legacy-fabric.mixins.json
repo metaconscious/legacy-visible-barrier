@@ -3,13 +3,21 @@
   "minVersion": "0.8",
   "package": "io.github.metaconscious.lvb.legacyfabric.mixin",
   "compatibilityLevel": "JAVA_8",
-  "refmap": "lvb-legacy-fabric.refmap.json",
+  "refmap": "lvb-${targetId}.refmap.json",
   "client": [
     "BarrierBlockMixin",
     "BarrierParticleMixin",
-    "BlockStateMapperMixin"
+    "BlockStateMapperMixin",
+    "ChunkMixin",
+    "GameRendererMixin",
+    "WorldRendererMixin",
+    "ChunkRenderListAccess",
+    "TranslucentMeshMixin",
+    "BufferBuilderMixin",
+    "VertexStateMixin"
   ],
   "injectors": {
     "defaultRequire": 1
-  }
+  },
+  "plugin": "io.github.metaconscious.lvb.legacyfabric.RenderingPlugin"
 }

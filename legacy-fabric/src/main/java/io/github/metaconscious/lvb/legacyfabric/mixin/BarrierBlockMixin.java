@@ -1,6 +1,9 @@
 package io.github.metaconscious.lvb.legacyfabric.mixin;
 
-import io.github.metaconscious.lvb.legacyfabric.LegacyFabricClient;
+import io.github.metaconscious.lvb.legacyfabric.RenderingPlugin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.block.BarrierBlock;
@@ -11,9 +14,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.world.BlockView;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(BarrierBlock.class)
 public class BarrierBlockMixin extends Block {
@@ -23,10 +23,8 @@ public class BarrierBlockMixin extends Block {
     }
 
     @Inject(method = "getBlockType", at = @At("RETURN"), cancellable = true)
-    private void lvb$renderType(CallbackInfoReturnable<Integer> result) {
-        if (LegacyFabricClient.barriersVisible()) {
-            result.setReturnValue(3);
-        }
+    private void lvb$nativeModel(CallbackInfoReturnable<Integer> result) {
+        if (RenderingPlugin.nativeVisible()) result.setReturnValue(3);
     }
 
     @Environment(EnvType.CLIENT)

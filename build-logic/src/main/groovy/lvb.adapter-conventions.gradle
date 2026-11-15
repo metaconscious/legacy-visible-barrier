@@ -1,13 +1,22 @@
 plugins { id 'lvb.java-conventions' }
 
-version = "${providers.gradleProperty('mod_version').get()}+${project.name}"
+ext.targetId = rootProject.targetCatalog.find { id, info -> info.project == project.path }.key
+ext.target = rootProject.targetCatalog[targetId]
+layout.buildDirectory = rootProject.layout.projectDirectory.dir("${target.platform}/${target.build_directory}")
+version = "${providers.gradleProperty('mod_version').get()}+${targetId}"
 base.archivesName = 'legacy-visible-barrier'
+
+configurations.configureEach {
+    resolutionStrategy.force "net.fabricmc:fabric-loader:${target.loader_version}"
+}
 
 configurations {
     bundledCore {
         canBeConsumed = false
         transitive = false
     }
+    bundledAdapter { canBeConsumed = false; transitive = false }
+    bundledSmokeFixtures { canBeConsumed = false; transitive = false }
     sharedResources {
         canBeConsumed = false
         transitive = false
@@ -15,6 +24,10 @@ configurations {
     productionJarElements {
         canBeConsumed = true
         canBeResolved = false
+    }
+    verificationMappings {
+        canBeConsumed = false
+        transitive = false
     }
 }
 
@@ -24,15 +37,37 @@ dependencies {
     implementation project(':core')
     bundledCore project(':core')
     sharedResources project(path: ':shared-resources', configuration: 'resourceElements')
+    def intermediary = target.platform == 'legacy-fabric' ? 'net.legacyfabric:intermediary' :
+            "net.ornithemc:calamus-intermediary${target.generation == 2 ? '-gen2' : ''}"
+    verificationMappings "${intermediary}:${minecraft_version}:v2"
 }
+
+tasks.register('prepareVerificationMappings', Copy) {
+    from { zipTree(configurations.verificationMappings.singleFile) }
+    include 'mappings/mappings.tiny'
+    into layout.buildDirectory.dir('verification')
+}
+tasks.named('check') { dependsOn 'prepareVerificationMappings' }
 
 tasks.named('processResources', ProcessResources) {
     dependsOn configurations.sharedResources
     inputs.property 'version', project.version
     inputs.property 'minecraftVersion', providers.gradleProperty('minecraft_version')
+    inputs.property 'target', target
+    def apiDependencies = target.api_modules.collectEntries { module, moduleVersion ->
+        [(target.platform == 'ornithe' ? "osl-${module}".toString() : module):
+                 ">=${target.platform == 'ornithe' ? moduleVersion.split('\\+')[0] : moduleVersion}"]
+    }
+    inputs.property 'apiMinimums', apiDependencies
     filesMatching('fabric.mod.json') {
         expand version: project.version,
-                minecraftVersion: providers.gradleProperty('minecraft_version').get()
+                minecraftVersion: providers.gradleProperty('minecraft_version').get(),
+                loaderMinimum: target.loader_minimum,
+                apiMinimums: apiDependencies,
+                targetId: targetId, targetName: target.name, sentinels: target.sentinels
+    }
+    filesMatching('*.mixins.json') {
+        expand targetId: targetId
     }
     from({ configurations.sharedResources.collect { zipTree(it) } }) {
         exclude 'META-INF/**'
@@ -41,8 +76,8 @@ tasks.named('processResources', ProcessResources) {
 }
 
 tasks.named('jar', Jar) {
-    dependsOn configurations.bundledCore
-    from({ configurations.bundledCore.collect { zipTree(it) } }) {
+    dependsOn configurations.bundledCore, configurations.bundledAdapter
+    from({ (configurations.bundledCore + configurations.bundledAdapter).collect { zipTree(it) } }) {
         exclude 'META-INF/**'
     }
     from(rootProject.layout.projectDirectory.file('LICENSE'))
@@ -57,24 +92,53 @@ sourceSets {
     }
 }
 
+tasks.named('processSmokeTestResources', ProcessResources) {
+    inputs.property 'targetId', targetId
+    filesMatching('*.mixins.json') { expand targetId: targetId }
+}
+
 loom {
+    mixin {
+        useLegacyMixinAp = true
+        defaultRefmapName = "lvb-${targetId}.refmap.json"
+        add sourceSets.main, "lvb-${targetId}.refmap.json"
+        add sourceSets.smokeTest, "lvb-${targetId}-smoke.refmap.json"
+    }
     mods {
         lvb { sourceSet sourceSets.main }
         lvb_smoke { sourceSet sourceSets.smokeTest }
     }
     runs {
+        client {
+            ideConfigGenerated true
+        }
         smokeTest {
             client()
             source sourceSets.smokeTest
             runDir 'build/smoke-test/run'
             vmArg '-Dlvb.smoke.report=' + layout.buildDirectory.file('reports/smoke-test.txt').get().asFile
+            vmArg '-Dlvb.smoke.expectedMode=enhanced'
+            vmArg '-Dfabric.disableErrorGui=true'
+        }
+    }
+    [nativeSmokeTest: [],
+     offSmokeTest: ['-Dlvb.renderMode=off'],
+     missingHookSmokeTest: ['-Dlvb.smoke.missingHook=true']].each { name, arguments ->
+        runs.create(name) {
+            client()
+            source sourceSets.smokeTest
+            runDir "build/${name}/run"
+            vmArg '-Dlvb.smoke.report=' + layout.buildDirectory.file("reports/${name}/smoke.txt").get().asFile
+            vmArg '-Dlvb.smoke.expectedMode=' + (name == 'offSmokeTest' ? 'off' : 'native')
+            vmArg '-Dfabric.disableErrorGui=true'
+            arguments.each { vmArg it }
         }
     }
 }
 
 tasks.named('runSmokeTest', JavaExec) {
     group = 'verification'
-    description = 'Starts an isolated client to verify initialization, controls and Mixin application.'
+    description = 'Verifies client initialization, controls, barrier rendering and chunk lifecycle.'
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
     timeout = Duration.ofMinutes(5)
     doFirst {
@@ -85,4 +149,21 @@ tasks.named('runSmokeTest', JavaExec) {
 
 tasks.named('runClient', JavaExec) {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
+}
+
+['nativeSmokeTest', 'offSmokeTest', 'missingHookSmokeTest'].each { name ->
+    tasks.named('run' + name.capitalize(), JavaExec) {
+        group = 'verification'
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
+        timeout = Duration.ofMinutes(5)
+        doFirst {
+            delete layout.buildDirectory.dir("${name}/run")
+            mkdir layout.buildDirectory.dir("${name}/run")
+            if (name == 'nativeSmokeTest') {
+                def config = layout.buildDirectory.file("${name}/run/config/lvb.properties").get().asFile
+                config.parentFile.mkdirs()
+                config.text = "renderMode=native\nnativeRefresh=${providers.gradleProperty('lvbNativeRefresh').getOrElse('dirty')}\n"
+            }
+        }
+    }
 }

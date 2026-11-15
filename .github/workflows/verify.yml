@@ -50,10 +50,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y xvfb x11-xserver-utils libgl1-mesa-dri libglx-mesa0
-      - name: Build, test and stage both distributions
+      - name: Build and test all distributions
+        run: ./gradlew --no-daemon --max-workers=2 clean build prepareModCompatibility
+      - name: Verify production clients and generation boundaries
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
-        run: xvfb-run -a -s '-screen 0 1280x720x24' ./gradlew --no-daemon --max-workers=2 clean build smokeTest stageRelease
+        run: xvfb-run -a -s '-screen 0 1280x720x24' python3 tools/verify_clients.py
+      - name: Verify and stage all distributions
+        run: ./gradlew --no-daemon --max-workers=2 stageRelease
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: distributions
@@ -74,6 +78,12 @@ jobs:
             core/build/reports/tests/
             build/reports/artifacts.json
             legacy-fabric/build/reports/smoke-test.txt
-            ornithe/build/reports/smoke-test.txt
+            legacy-fabric/build/reports/client.json
+            legacy-fabric/build/reports/*SmokeTest/
+            ornithe/gen*/build/reports/
+            build/client-tests/**/result.json
+            build/client-tests/**/smoke.txt
+            build/client-tests/**/console.log
+            build/client-tests/summary.json
           if-no-files-found: ignore
           retention-days: 14

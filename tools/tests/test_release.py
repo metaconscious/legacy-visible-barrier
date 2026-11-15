@@ -13,14 +13,14 @@ from release import check_github_release, load_manifest, publish, stage
 from versions import TARGETS, artifact_version
 
 
-def record(target, base="1.2.0"):
+def record(target, base="1.3.0"):
     data = b"verified-test-artifact"
     version = artifact_version(base, target)
     return {"target": target, "version": version, "filename": f"legacy-visible-barrier-{version}.jar",
             "sha512": hashlib.sha512(data).hexdigest(), "size": len(data)}
 
 
-def write_manifest(directory, records, base="1.2.0"):
+def write_manifest(directory, records, base="1.3.0"):
     manifest = {"schema": 2, "repository": "metaconscious/legacy-visible-barrier",
                 "version": base, "tag": f"v{base}", "commit": "a" * 40,
                 "changelog": "- Unified build.", "artifacts": records}
@@ -90,8 +90,8 @@ class PublicationTests(unittest.TestCase):
         self.records = [record(target) for target in TARGETS]
 
     def test_github_release_metadata_must_match_on_retry(self):
-        manifest = {"version": "1.2.0", "tag": "v1.2.0", "changelog": "- Unified build."}
-        existing = {"tag_name": "v1.2.0", "name": "1.2.0", "body": "- Unified build.", "prerelease": False}
+        manifest = {"version": "1.3.0", "tag": "v1.3.0", "changelog": "- Unified build."}
+        existing = {"tag_name": "v1.3.0", "name": "1.3.0", "body": "- Unified build.", "prerelease": False}
         check_github_release(manifest, existing)
         for field, value in (("tag_name", "v1.1.0"), ("name", "another release"),
                              ("body", "changed notes"), ("prerelease", True)):
@@ -104,12 +104,12 @@ class PublicationTests(unittest.TestCase):
             write_manifest(path, self.records)
             report = path / "artifacts.json"
             report.write_text(json.dumps(self.records), encoding="utf-8")
-            (path / "CHANGELOG.md").write_text("## [1.2.0]\n\n- Unified build.\n", encoding="utf-8")
+            (path / "CHANGELOG.md").write_text("## [1.3.0]\n\n- Unified build.\n", encoding="utf-8")
             output = path / "staged"
             with (patch("release.ROOT", path),
                   patch("release.subprocess.check_output", side_effect=["", "a" * 40]),
                   redirect_stdout(io.StringIO())):
-                stage("1.2.0", report, {r["target"]: path / r["filename"] for r in self.records}, output)
+                stage("1.3.0", report, {r["target"]: path / r["filename"] for r in self.records}, output)
             manifest_path = output / "release.json"
             self.assertEqual(self.records, load_manifest(manifest_path)["artifacts"])
             (output / self.records[0]["filename"]).write_bytes(b"changed")
@@ -122,7 +122,7 @@ class PublicationTests(unittest.TestCase):
             manifest_path = write_manifest(path, self.records)
             manifest = load_manifest(manifest_path)
             first_file = self.records[0]["filename"]
-            draft = {"tag_name": "v1.2.0", "name": "1.2.0", "body": manifest["changelog"],
+            draft = {"tag_name": "v1.3.0", "name": "1.3.0", "body": manifest["changelog"],
                      "prerelease": False, "draft": True, "assets": [{"name": first_file}]}
             github = FakeGitHub(manifest, draft, {first_file: (path / first_file).read_bytes()})
             with patch("release.gh", github), redirect_stdout(io.StringIO()):
@@ -135,7 +135,7 @@ class PublicationTests(unittest.TestCase):
                 self.assertEqual((path / name).read_bytes(), data)
 
     def test_first_publication_and_published_release_retry_create_one_release(self):
-        for base in ("1.2.0", "1.2.0-rc.1"):
+        for base in ("1.3.0", "1.3.0-rc.1"):
             with self.subTest(version=base), tempfile.TemporaryDirectory() as directory:
                 records = [record(target, base) for target in TARGETS]
                 manifest_path = write_manifest(Path(directory), records, base)
@@ -146,13 +146,13 @@ class PublicationTests(unittest.TestCase):
                 self.assertEqual(1, github.created)
                 self.assertEqual(1, github.published)
                 self.assertEqual([r["filename"] for r in records] + ["release.json", "SHA512SUMS"], github.uploaded)
-                self.assertEqual(base != "1.2.0", github.existing["prerelease"])
+                self.assertEqual(base != "1.3.0", github.existing["prerelease"])
 
     def test_duplicate_github_tags_fail_before_any_publication(self):
         with tempfile.TemporaryDirectory() as directory:
             manifest_path = write_manifest(Path(directory), self.records)
-            github = FakeGitHub(load_manifest(manifest_path), {"tag_name": "v1.2.0", "draft": True})
-            github.extra_releases.append({"tag_name": "v1.2.0", "draft": False})
+            github = FakeGitHub(load_manifest(manifest_path), {"tag_name": "v1.3.0", "draft": True})
+            github.extra_releases.append({"tag_name": "v1.3.0", "draft": False})
             with patch("release.gh", github), self.assertRaisesRegex(ValueError, "Multiple GitHub releases"):
                 publish(manifest_path)
             self.assertEqual(0, github.created)

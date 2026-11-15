@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "package": "io.github.metaconscious.lvb.ornithe.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "lvb-${targetId}-smoke.refmap.json",
+  "client": [
+    "BlockModelRendererSmokeTestMixin",
+    "WorldRendererSmokeTestMixin",
+    "VillageMarkerSmokeTestMixin",
+    "WaypointSmokeTestMixin",
+    "BarrierRendererSmokeTestMixin",
+    "GameRendererSmokeTestMixin",
+    "NativeConflictSmokeTestMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "plugin": "io.github.metaconscious.lvb.ornithe.SmokeTestPlugin"
+}

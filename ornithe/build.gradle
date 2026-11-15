@@ -1,29 +1,22 @@
 plugins {
-    id 'fabric-loom'
-    id 'ploceus'
-    id 'lvb.adapter-conventions'
+    id 'lvb.java-conventions'
+    id 'java-test-fixtures'
+    id 'net.fabricmc.fabric-loom-companion'
 }
-
-ploceus { generation.set(1) }
 
 repositories {
-    exclusiveContent {
-        forRepository { maven { url = 'https://maven.ornithemc.net/releases/' } }
-        filter { includeGroupByRegex 'net\\.ornithemc(\\..*)?' }
-    }
+    maven { url = 'https://maven.fabricmc.net/' }
+    maven { url = 'https://libraries.minecraft.net/' }
 }
+
+configurations.testFixturesCompileOnly.extendsFrom configurations.compileOnly
 
 dependencies {
-    minecraft "com.mojang:minecraft:${minecraft_version}"
-    mappings ploceus.featherMappings(ornithe_feather_build)
-    modImplementation "net.fabricmc:fabric-loader:${ornithe_loader_version}"
-    modImplementation "net.ornithemc.osl:core:${osl_core_version}"
-    modImplementation "net.ornithemc.osl:keybinds:${osl_keybinds_version}"
-    modImplementation "net.ornithemc.osl:lifecycle-events:${osl_lifecycle_version}"
-    modRuntimeOnly "net.ornithemc.osl:entrypoints:${osl_entrypoints_version}"
-    modRuntimeOnly "net.ornithemc.osl:resource-loader:${osl_resources_version}"
-}
-
-loom {
-    mixin { defaultRefmapName = 'lvb-ornithe.refmap.json' }
+    implementation project(':core')
+    compileOnly "net.fabricmc:fabric-loader:${rootProject.targetCatalog.ornithe.loader_version}"
+    compileOnly('net.fabricmc:sponge-mixin:0.16.5+mixin.0.8.7') { transitive = false }
+    compileOnly 'org.ow2.asm:asm-tree:9.9'
+    compileOnly 'org.apache.logging.log4j:log4j-api:2.19.0'
+    testFixturesCompileOnly 'com.google.code.gson:gson:2.10'
+    testFixturesCompileOnly 'org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209'
 }

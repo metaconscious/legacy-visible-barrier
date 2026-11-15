@@ -1,0 +1,20 @@
+{
+  "required": true,
+  "package": "io.github.metaconscious.lvb.legacyfabric.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "lvb-${targetId}-smoke.refmap.json",
+  "client": [
+    "BlockModelRendererSmokeTestMixin",
+    "WorldRendererSmokeTestMixin",
+    "HitboxSmokeTestMixin",
+    "HighlightSmokeTestMixin",
+    "ChunkBorderSmokeTestMixin",
+    "BarrierRendererSmokeTestMixin",
+    "GameRendererSmokeTestMixin",
+    "NativeConflictSmokeTestMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "plugin": "io.github.metaconscious.lvb.legacyfabric.SmokeTestPlugin"
+}

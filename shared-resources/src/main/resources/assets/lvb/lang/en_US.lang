@@ -2,3 +2,6 @@ key.category.legacy_visible_barriers=Legacy Visible Barrier
 key.toggle_barrier_visibility=Toggle Barrier Visibility
 lvb.to_visible=Barriers are visible now
 lvb.to_invisible=Barriers are no longer visible
+lvb.mode_native=Using native barrier rendering; terrain updates gradually
+lvb.unavailable=Barrier visualization is unavailable
+lvb.disabled=Barrier visualization is disabled

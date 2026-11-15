@@ -2,3 +2,6 @@ key.category.legacy_visible_barriers=Barrière Visible Héritée
 key.toggle_barrier_visibility=Basculer la Visibilité des Barrières
 lvb.to_visible=Les barrières sont maintenant visibles
 lvb.to_invisible=Les barrières ne sont plus visibles
+lvb.mode_native=Rendu natif des barrières actif ; le terrain se met à jour progressivement
+lvb.unavailable=La visualisation des barrières est indisponible
+lvb.disabled=La visualisation des barrières est désactivée

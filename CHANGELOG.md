@@ -3,6 +3,36 @@
 Versions follow [Semantic Versioning 2.0.0](https://semver.org/). The public compatibility
 surface is defined in [docs/compatibility.md](docs/compatibility.md).
 
+## [1.3.0] - 2026-11-15
+
+- Add an Ornithe Calamus Gen2 distribution alongside both existing Gen1 distributions.
+- Reject mismatched mapping generations before activating Minecraft rendering hooks.
+- Isolate generation-specific sources, dependencies and build outputs;
+  verify all three production distributions and cross-generation rejection in CI.
+- Import both Ornithe generations in IntelliJ IDEA with separate source roots,
+  mappings, dependencies and client run configurations; build all targets in one invocation.
+- Update the build to Gradle 9.2.1, Loom 1.15.5, Legacy Looming 1.15.3 and Ploceus 1.15.9;
+  retain Java 8 mod bytecode and runtime support.
+- Eliminate toggle-triggered terrain reloads and screen flicker in enhanced mode.
+- Add native compatibility and off modes, selected before Mixin transformation. Native
+  mode uses coalesced section updates, with an optional full-reload refresh policy.
+- Recover from missing enhanced hooks and contained rendering failures by switching
+  to native mode; report shared model failures as visualization unavailable.
+- Build barrier geometry separately and share translucent draw ordering with existing
+  terrain vertices in both adapters, preserving water and glass blending.
+- Track barriers through block changes, chunk data updates, unloads, and world changes.
+- Preserve lightmap, color, vertex-array and buffer state around barrier drawing,
+  including foreign VAOs and element buffers.
+- Enforce client-thread index access and non-reentrant rendering; restore graphics
+  state before recovery and keep rendering workers separate from mode decisions.
+- Keep the barrier frame hook reachable when a mod replaces or cancels terrain drawing.
+- Retain compiled vertex origins, shader attributes and sprite ordering with OptiFine;
+  restore atlas bindings after multi-texture uploads.
+- Document tested rendering mods, supported loader generations, and translucent ordering.
+- Add production-namespace compatibility tests for active hitboxes, block highlights,
+  chunk grids, orthographic cameras, village markers, custom outlines and waypoint labels.
+- Add client regression checks for rendering isolation, state restoration and lifecycle updates.
+
 ## [1.2.0] - 2026-11-15
 
 - Build Legacy Fabric and Ornithe artifacts from one four-project Gradle build.
@@ -28,6 +58,7 @@ surface is defined in [docs/compatibility.md](docs/compatibility.md).
 - Toggle barrier block visibility with a rebindable `B` key.
 - Provide translated controls and visibility feedback.
 
+[1.3.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.3.0
 [1.2.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.2.0
 [1.1.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.1.0
 [1.0.1]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.0.1

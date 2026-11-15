@@ -6,5 +6,6 @@
   "entrypoints": {
     "client": ["io.github.metaconscious.lvb.legacyfabric.ClientSmokeTest"]
   },
+  "mixins": ["lvb-legacy-fabric-smoke.mixins.json"],
   "depends": { "lvb": "*" }
 }

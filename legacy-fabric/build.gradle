@@ -1,11 +1,11 @@
 plugins {
-    id 'fabric-loom'
+    id 'net.fabricmc.fabric-loom-remap'
     id 'legacy-looming'
     id 'lvb.adapter-conventions'
 }
 
 legacyLooming {
-    intermediaryVersion.set(1)
+    intermediaryVersion.set(target.generation as int)
     useLFIntermediary.set(true)
 }
 
@@ -18,11 +18,7 @@ repositories {
 
 dependencies {
     minecraft "com.mojang:minecraft:${minecraft_version}"
-    mappings legacy.yarn(minecraft_version, legacy_yarn_build)
-    modImplementation "net.fabricmc:fabric-loader:${legacy_loader_version}"
-    modImplementation "net.legacyfabric.legacy-fabric-api:legacy-fabric-api:${legacy_api_version}"
-}
-
-loom {
-    mixin { defaultRefmapName = 'lvb-legacy-fabric.refmap.json' }
+    mappings legacy.yarn(minecraft_version, target.mapping_build.toString())
+    modImplementation "net.fabricmc:fabric-loader:${target.loader_version}"
+    modImplementation "${target.api_group}:legacy-fabric-api:${target.api_modules['legacy-fabric-api']}"
 }

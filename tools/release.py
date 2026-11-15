@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from versions import TARGETS, artifact_version, changelog_entry, parse_version, validate_tag
+from versions import TARGETS, artifact_version, changelog_entry, parse_version, target_paths, validate_tag
 
 ROOT = Path(__file__).resolve().parent.parent
 REPOSITORY = "metaconscious/legacy-visible-barrier"
@@ -138,8 +138,7 @@ def main():
     staging.add_argument("--report", type=Path, required=True)
     staging.add_argument("--output", type=Path, required=True)
     staging.add_argument("--tag")
-    for target in TARGETS:
-        staging.add_argument(f"--{target}", type=Path, required=True)
+    staging.add_argument("--artifact", action="append", required=True, help="TARGET=JAR; repeat for every target")
     publishing = commands.add_parser("publish")
     publishing.add_argument("manifest", type=Path)
     checking = commands.add_parser("validate-tag")
@@ -151,8 +150,7 @@ def main():
     elif args.command == "validate-tag":
         validate_tag(args.tag, args.base)
     else:
-        stage(args.base_version, args.report,
-              {target: getattr(args, target.replace("-", "_")) for target in TARGETS}, args.output, args.tag)
+        stage(args.base_version, args.report, target_paths(args.artifact), args.output, args.tag)
 
 
 if __name__ == "__main__":

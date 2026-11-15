@@ -24,6 +24,7 @@ class VersionTests(unittest.TestCase):
     def test_platform_variants_are_derived_from_one_version(self):
         self.assertEqual("1.2.0+legacy-fabric", artifact_version("1.2.0", "legacy-fabric"))
         self.assertEqual("1.2.0-rc.1+ornithe", artifact_version("1.2.0-rc.1", "ornithe"))
+        self.assertEqual("1.3.0+ornithe.gen2", artifact_version("1.3.0", "ornithe.gen2"))
         for base, target in (("1.2.0+custom", "ornithe"), ("1.2.0", "fabric")):
             with self.assertRaises(ValueError):
                 artifact_version(base, target)

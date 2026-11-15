@@ -1,6 +1,8 @@
 """Release identifiers shared by verification and publication."""
 
+import json
 import re
+from pathlib import Path
 
 _NUMBER = r"(?:0|[1-9][0-9]*)"
 _PRE_ID = r"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
@@ -9,11 +11,32 @@ SEMVER = re.compile(
     rf"(?:-(?P<prerelease>{_PRE_ID}(?:\.{_PRE_ID})*))?"
     r"(?:\+(?P<build>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
 )
-TARGETS = {
-    "legacy-fabric": {"name": "Legacy Fabric"},
-    "ornithe": {"name": "Ornithe"},
-}
+TARGETS = json.loads((Path(__file__).resolve().parents[1] / "gradle/targets.json").read_text(encoding="utf-8"))
 GAME_VERSION = "1.8.9"
+
+
+def runtime_dependencies(target):
+    info = TARGETS[target]
+    dependencies = {"fabricloader": ">=" + info["loader_minimum"], "minecraft": GAME_VERSION, "java": ">=8"}
+    dependencies.update({("osl-" + module if info["platform"] == "ornithe" else module):
+                         ">=" + (version.split("+")[0] if info["platform"] == "ornithe" else version)
+                         for module, version in info["api_modules"].items()})
+    return dependencies
+
+
+def target_metadata(target):
+    info = TARGETS[target]
+    return {"id": target, "name": info["name"], "sentinels": info["sentinels"]}
+
+
+def target_paths(values):
+    result = {}
+    for value in values:
+        target, separator, path = value.partition("=")
+        if not separator or not path or target not in TARGETS or target in result:
+            raise ValueError(f"Expected a distinct known target and path: {value}")
+        result[target] = Path(path)
+    return result
 
 
 def parse_version(version):

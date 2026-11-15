@@ -2,3 +2,6 @@ key.category.legacy_visible_barriers=Ältere Sichtbare Barriere
 key.toggle_barrier_visibility=Barrieresichtbarkeit Umschalten
 lvb.to_visible=Barrieren sind jetzt sichtbar
 lvb.to_invisible=Barrieren sind nicht mehr sichtbar
+lvb.mode_native=Native Barrierendarstellung aktiv; das Gelände wird schrittweise aktualisiert
+lvb.unavailable=Barrierendarstellung ist nicht verfügbar
+lvb.disabled=Barrierendarstellung ist deaktiviert
