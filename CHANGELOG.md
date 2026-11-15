@@ -3,7 +3,7 @@
 Versions follow [Semantic Versioning 2.0.0](https://semver.org/). The public compatibility
 surface is defined in [docs/compatibility.md](docs/compatibility.md).
 
-## [1.4.0] - Unreleased
+## [1.4.0] - 2026-11-15
 
 - Add native settings screens for all three distributions, with optional Mod Menu integration.
 - Add an unbound settings control while retaining the existing B visibility toggle.
@@ -67,7 +67,7 @@ surface is defined in [docs/compatibility.md](docs/compatibility.md).
 - Toggle barrier block visibility with a rebindable `B` key.
 - Provide translated controls and visibility feedback.
 
-[1.4.0]: https://github.com/metaconscious/legacy-visible-barrier/compare/v1.3.0...HEAD
+[1.4.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.4.0
 [1.3.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.3.0
 [1.2.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.2.0
 [1.1.0]: https://github.com/metaconscious/legacy-visible-barrier/releases/tag/v1.1.0
