@@ -137,9 +137,11 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
                 if entry.filename.endswith((".so", ".dll", ".dylib", ".jnilib")):
                     (native_dir / Path(entry.filename).name).write_bytes(archive.read(entry))
 
+    # Packaged classes must be loaded from the tested mod JARs, including shared adapter helpers.
+    bundled = {Path(data["core"]), *map(Path, data.get("bundled", []))}
     classpath = []
     for jar in map(Path, data["classpath"]):
-        if (not jar.is_file() or jar == Path(data["core"])
+        if (not jar.is_file() or jar in bundled
                 or jar.name.startswith(("minecraft-", "dev-launch-injector-"))):
             continue
         if is_mod(jar) and not jar.name.startswith("fabric-loader-"):
@@ -151,6 +153,7 @@ def launch(manifest, profile, mods, java=None, properties=(), config=None, optio
     executable = str(Path(java).resolve()) if java and os.path.dirname(java) else java or data["java"]
     command = [executable, "-Xmx1G", f"-Djava.library.path={native_dir}",
                f"-Dorg.lwjgl.librarypath={native_dir}", "-Dfabric.disableErrorGui=true",
+               *(["-Djava.awt.headless=true"] if runtime_manifest else []),
                "-Dfabric.development=false", "-Dlog4j2.formatMsgNoLookups=true", *data.get("jvm_args", []),
                f"-Dlvb.smoke.report={report}", f"-Dlvb.renderMode={render_mode}",
                f"-Dlvb.nativeRefresh={native_refresh}", *[f"-D{p}" for p in properties],

@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -66,6 +67,36 @@ class CompatibilityTests(unittest.TestCase):
         code, result = self.launch(properties=["lvb.smoke.expectHitboxes=true"])
         self.assertEqual(1, code)
         self.assertIn("feature:expectHitboxes", result["failure"])
+
+    def test_packaged_helpers_are_not_loaded_from_development_jars(self):
+        shared, fixtures, library = [self.root / name for name in ("shared.jar", "fixtures.jar", "library.jar")]
+        for jar in (shared, fixtures, library):
+            with zipfile.ZipFile(jar, "w") as archive:
+                archive.writestr("fixture.class", b"fixture")
+        manifest = json.loads(self.manifest.read_text())
+        manifest.update(classpath=list(map(str, (shared, fixtures, library))),
+                        bundled=list(map(str, (shared, fixtures))))
+        self.manifest.write_text(json.dumps(manifest))
+        with patch.object(runner.subprocess, "run", side_effect=self.client_process) as process:
+            self.assertEqual(0, runner.launch(self.manifest, self.profile, []))
+        command = process.call_args.args[0]
+        self.assertEqual([str(library), str(self.minecraft)], command[command.index("-cp") + 1].split(os.pathsep))
+
+    def test_wrong_generation_exits_without_an_error_dialog(self):
+        runtime = self.root / "other-generation.json"
+        data = json.loads(self.manifest.read_text())
+        data.update(mapping={"generation": 2}, jvm_args=[])
+        runtime.write_text(json.dumps(data))
+
+        def reject(command, **kwargs):
+            self.assertIn("-Djava.awt.headless=true", command)
+            kwargs["stdout"].write("MixinInitialisationError: LVB mapping generation mismatch: this JAR requires Gen1")
+            return subprocess.CompletedProcess(command, 1)
+
+        with patch.object(runner.subprocess, "run", side_effect=reject):
+            self.assertEqual(0, runner.launch(self.manifest, self.profile, [], runtime_manifest=runtime))
+        result = json.loads((self.profile / "result.json").read_text())
+        self.assertEqual(["wrong-generation-rejected"], result["assertions"])
 
     def test_shader_pack_requires_an_active_shader_program(self):
         shader = self.root / "shader.zip"

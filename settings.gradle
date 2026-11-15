@@ -14,3 +14,4 @@ plugins {
 
 rootProject.name = 'legacy-visible-barrier'
 include 'core', 'shared-resources', 'legacy-fabric', 'ornithe'
+include 'ornithe:gen1', 'ornithe:gen2'

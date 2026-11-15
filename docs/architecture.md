@@ -1,8 +1,9 @@
 # Architecture
 
-The build has four projects and a small included `build-logic` build. It produces three
-alternative client distributions for Minecraft 1.8.9. The adapters use different mappings and
-intermediary namespaces; each distribution contains the same core classes and assets.
+The build has four module boundaries: core, shared resources, Legacy Fabric and Ornithe.
+Ornithe has two generation projects beneath its shared adapter project, giving six Gradle
+projects and a small included `build-logic` build. They produce three alternative client
+distributions for Minecraft 1.8.9. Each distribution contains the same core classes and assets.
 
 ## Architecture
 
@@ -31,13 +32,17 @@ flowchart LR
 | `core` | Visibility, rendering policy, interfaces and translucent ordering | Java standard library |
 | `shared-resources` | Nine translations, icon, barrier models and texture | None |
 | `legacy-fabric` | Client entrypoint, chunk indexes, rendering adapters, Mixins, metadata | Core, resources, Legacy Fabric API, Fabric Loader, Minecraft |
-| `ornithe` | Shared client integration and generation-specific rendering sources | Core, resources, OSL modules, Fabric Loader, Minecraft |
+| `ornithe` | Shared bootstrap policy bridge, vertex-origin contract and test helpers | Core; compile-only Fabric Loader, Mixin, ASM and logging APIs |
+| `ornithe:gen1`, `ornithe:gen2` | Client entrypoints, chunk indexes, rendering adapters, Mixins, metadata | Core, shared Ornithe classes, resources, generation-specific OSL and Minecraft |
 
 `shared-resources` exposes a resource archive through a consumable Gradle configuration.
 Adapters consume it through project dependencies. Core classes are embedded directly
 in each adapter JAR before remapping. Neither the core archive nor the resource archive
 is installed separately. Each adapter exposes its `remapJar` output for distribution
 verification and staging.
+The shared Ornithe classes are embedded in both Ornithe distributions. Its test fixtures
+are embedded only in the smoke-test JARs. Adapter metadata templates live in
+`ornithe/resources`; both generations expand them during resource processing.
 
 Build conventions configure Java 8 compilation, Java 8 tests, reproducible archive
 ordering, and adapter packaging. Loader plugins apply only to adapter projects. The
@@ -49,17 +54,17 @@ its compiler independently and the main build can provision the Java 8 test runt
 
 ### Mapping targets
 
-`gradle/targets.json` defines each distribution's mapping generation, dependencies,
-output directory and bootstrap sentinels. The default build
-selects Legacy Fabric Gen1 and Ornithe Gen1. `-PlvbOrnitheGeneration=2` selects Ornithe
-Gen2; it leaves Legacy Fabric on its existing generation. Run the two configurations
-sequentially in one checkout. Ornithe outputs live in `build/gen1` and `build/gen2`.
+`gradle/targets.json` defines each distribution's Gradle project, mapping generation,
+dependencies, output directory and bootstrap sentinels. A single build compiles all
+three targets. Ornithe outputs live in `ornithe/gen1/build` and `ornithe/gen2/build`.
 
-The Ornithe adapter shares mapping-stable sources in `src/main/java`. Files whose
-Minecraft names differ live in `src/gen1/java` and `src/gen2/java`; the build selects
-exactly one directory. Smoke fixtures use corresponding generation directories.
-Each target compiles and remaps against its own Feather and Calamus artifacts and
-gets a distinct refmap. Core logic and shared resources are generation-independent.
+Both Ornithe generations have independent Loom projects, source roots, Minecraft
+classpaths, OSL dependencies, run directories and refmaps. IntelliJ imports both at once.
+Minecraft-facing classes belong to their generation even where the mapped Java spelling
+is identical. Shared Ornithe classes and test helpers have no Minecraft dependency and
+are compiled once in the parent project. Each physical Java source root has one IDE owner.
+Each target compiles and remaps against its own Feather and Calamus artifacts.
+Core logic and shared resources are generation-independent.
 
 Before selecting rendering hooks, `RenderingPlugin` uses Fabric Loader's public
 mapping resolver to check two official-to-intermediary class identities against the

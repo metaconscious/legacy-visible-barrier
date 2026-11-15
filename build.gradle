@@ -19,22 +19,22 @@ group = 'io.github.metaconscious.mod'
 version = providers.gradleProperty('mod_version').get()
 
 ext.targetCatalog = new JsonSlurper().parse(file('gradle/targets.json'))
-def generation = providers.gradleProperty('lvbOrnitheGeneration').getOrElse('1')
-if (!(generation in ['1', '2'])) throw new GradleException('lvbOrnitheGeneration must be 1 or 2')
-ext.ornitheTarget = generation == '1' ? 'ornithe' : 'ornithe.gen2'
+def adapterProjects = targetCatalog.values()*.project
 
 subprojects {
     plugins.withId('lvb.adapter-conventions') {
         // Optional production-namespace fixtures for mods that cannot run in Loom's named environment.
         def directory = layout.buildDirectory.dir('mod-compatibility')
         def smokeJar = tasks.register('compatibilitySmokeJar', Jar) {
+            dependsOn configurations.bundledSmokeFixtures
             from sourceSets.smokeTest.output
-            archiveFileName = "${project.name}-smoke-dev.jar"
+            from({ configurations.bundledSmokeFixtures.collect { zipTree(it) } }) { exclude 'META-INF/**' }
+            archiveFileName = "${targetId}-smoke-dev.jar"
             destinationDirectory = directory
         }
         def remappedSmoke = tasks.register('remapCompatibilitySmoke', RemapJarTask) {
             inputFile = smokeJar.flatMap { it.archiveFile }
-            archiveFileName = "${project.name}-smoke.jar"
+            archiveFileName = "${targetId}-smoke.jar"
             destinationDirectory = directory
             addNestedDependencies = false
         }
@@ -50,7 +50,7 @@ subprojects {
                 def mods = configurations.detachedConfiguration(*dependencies).resolve()
                 def minecraft = loom.minecraftProvider
                 def launch = [
-                        platform: project.name,
+                        platform: target.platform,
                         target: targetId,
                         version: project.version,
                         mapping: [generation: target.generation, minecraft: minecraft_version,
@@ -59,6 +59,8 @@ subprojects {
                         java: tasks.named('runSmokeTest').get().javaLauncher.get().executablePath.asFile.path,
                         classpath: sourceSets.smokeTest.runtimeClasspath.files.collect { it.path },
                         core: configurations.bundledCore.singleFile.path,
+                        bundled: (configurations.bundledCore + configurations.bundledAdapter
+                                + configurations.bundledSmokeFixtures).files.collect { it.path },
                         minecraft: minecraft.minecraftClientJar.path,
                         assets: new File(loom.files.userCache, 'assets').path,
                         assetIndex: minecraft.versionInfo.assetIndex().fabricId(minecraft.minecraftVersion()),
@@ -87,51 +89,29 @@ tasks.named('updateDaemonJvm') {
 
 configurations {
     coreArchive { canBeConsumed = false; transitive = false }
-    legacyDistribution { canBeConsumed = false; transitive = false }
-    ornitheDistribution { canBeConsumed = false; transitive = false }
+    distributions { canBeConsumed = false; transitive = false }
 }
 
 dependencies {
     coreArchive project(path: ':core', configuration: 'runtimeElements')
-    legacyDistribution project(path: ':legacy-fabric', configuration: 'productionJarElements')
-    ornitheDistribution project(path: ':ornithe', configuration: 'productionJarElements')
+    adapterProjects.each { path ->
+        distributions project(path: path, configuration: 'productionJarElements')
+    }
 }
 
 tasks.register('verifyArtifacts', Exec) {
     group = 'verification'
-    description = 'Checks the selected remapped JARs, mapping generation, core, bytecode and resources.'
-    dependsOn ':core:jar', ':legacy-fabric:remapJar', ':ornithe:remapJar',
-            ':legacy-fabric:prepareVerificationMappings', ':ornithe:prepareVerificationMappings'
-    inputs.files(configurations.coreArchive, configurations.legacyDistribution, configurations.ornitheDistribution)
+    description = 'Builds and checks all three remapped JARs, mappings, core, bytecode and resources.'
+    dependsOn configurations.coreArchive, configurations.distributions
+    dependsOn adapterProjects.collect { "${it}:prepareVerificationMappings" }
+    inputs.files(configurations.coreArchive, configurations.distributions)
     inputs.dir 'shared-resources/src/main/resources/assets'
     inputs.files 'tools/verify_artifacts.py', 'tools/versions.py', 'gradle/targets.json'
-    inputs.files(['legacy-fabric', ornitheTarget].collect { id ->
-        def info = targetCatalog[id]
+    inputs.files(targetCatalog.values().collect { info ->
         file("${info.platform}/${info.build_directory}/verification/mappings/mappings.tiny")
     })
     inputs.property 'version', project.version
-    inputs.property 'ornitheTarget', ornitheTarget
-    outputs.file layout.buildDirectory.file("reports/artifacts-gen${generation}.json")
-    doFirst {
-        commandLine 'python3', 'tools/verify_artifacts.py', '--base-version', project.version,
-                '--core', configurations.coreArchive.singleFile,
-                '--assets', file('shared-resources/src/main/resources/assets'),
-                '--report', layout.buildDirectory.file("reports/artifacts-gen${generation}.json").get().asFile
-        ['legacy-fabric', ornitheTarget].each { id ->
-            def info = targetCatalog[id]
-            def directory = file("${info.platform}/${info.build_directory}")
-            args '--artifact', "${id}=${directory}/libs/legacy-visible-barrier-${version}+${id}.jar",
-                    '--mappings', "${id}=${directory}/verification/mappings/mappings.tiny"
-        }
-    }
-}
-
-tasks.register('verifyDistributions', Exec) {
-    group = 'verification'
-    description = 'Verifies all three previously built distributions together.'
-    dependsOn ':core:jar'
-    mustRunAfter ':legacy-fabric:remapJar', ':ornithe:remapJar',
-            ':legacy-fabric:prepareVerificationMappings', ':ornithe:prepareVerificationMappings'
+    outputs.file layout.buildDirectory.file('reports/artifacts.json')
     doFirst {
         commandLine 'python3', 'tools/verify_artifacts.py', '--base-version', project.version,
                 '--core', configurations.coreArchive.singleFile,
@@ -145,6 +125,18 @@ tasks.register('verifyDistributions', Exec) {
     }
 }
 
+tasks.register('verifyDistributions') {
+    group = 'verification'
+    description = 'Verifies all three distributions together.'
+    dependsOn 'verifyArtifacts'
+}
+
+tasks.register('prepareModCompatibility') {
+    group = 'verification'
+    description = 'Prepares production client fixtures for all three distributions.'
+    dependsOn adapterProjects.collect { "${it}:prepareModCompatibility" }
+}
+
 tasks.register('testReleaseTools', Exec) {
     group = 'verification'
     description = 'Tests release, artifact and compatibility tooling with local fixtures.'
@@ -153,8 +145,8 @@ tasks.register('testReleaseTools', Exec) {
 
 tasks.register('smokeTest') {
     group = 'verification'
-    description = 'Runs both Minecraft clients in isolated directories; requires a display.'
-    dependsOn([':legacy-fabric', ':ornithe'].collectMany { adapter ->
+    description = 'Runs all three Minecraft clients in isolated directories; requires a display.'
+    dependsOn(adapterProjects.collectMany { adapter ->
         ['runSmokeTest', 'runNativeSmokeTest', 'runOffSmokeTest', 'runMissingHookSmokeTest'].collect { "${adapter}:${it}" }
     })
 }
@@ -178,8 +170,9 @@ tasks.register('stageRelease', Exec) {
 }
 
 tasks.named('check') {
-    dependsOn ':core:check', ':legacy-fabric:check', ':ornithe:check', 'verifyArtifacts', 'testReleaseTools'
+    dependsOn ':core:check', ':ornithe:check', 'verifyArtifacts', 'testReleaseTools'
+    dependsOn adapterProjects.collect { "${it}:check" }
 }
 tasks.named('assemble') {
-    dependsOn ':legacy-fabric:remapJar', ':ornithe:remapJar'
+    dependsOn configurations.distributions
 }

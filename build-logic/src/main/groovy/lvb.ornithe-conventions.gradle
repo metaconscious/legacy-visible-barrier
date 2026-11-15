@@ -1,0 +1,35 @@
+plugins { id 'lvb.adapter-conventions' }
+
+ploceus { setIntermediaryGeneration(target.generation as int) }
+
+repositories {
+    exclusiveContent {
+        forRepository { maven { url = 'https://maven.ornithemc.net/releases/' } }
+        filter { includeGroupByRegex 'net\\.ornithemc(\\..*)?' }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings ploceus.featherMappings(target.mapping_build.toString())
+    modImplementation "net.fabricmc:fabric-loader:${target.loader_version}"
+    target.api_modules.each { module, moduleVersion ->
+        add(target.runtime_modules.contains(module) ? 'modRuntimeOnly' : 'modImplementation',
+                "${target.api_group}:${module}:${moduleVersion}")
+    }
+    implementation project(':ornithe')
+    bundledAdapter project(':ornithe')
+    smokeTestImplementation testFixtures(project(':ornithe'))
+    bundledSmokeFixtures testFixtures(project(':ornithe'))
+}
+
+tasks.named('processResources', ProcessResources) {
+    from rootProject.file('ornithe/resources/main')
+}
+tasks.named('processSmokeTestResources', ProcessResources) {
+    from rootProject.file('ornithe/resources/smokeTest')
+}
+loom.mods {
+    lvb { sourceSet 'main', ':ornithe' }
+    lvb_smoke { sourceSet 'testFixtures', ':ornithe' }
+}

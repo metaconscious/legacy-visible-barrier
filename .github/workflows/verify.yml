@@ -50,10 +50,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y xvfb x11-xserver-utils libgl1-mesa-dri libglx-mesa0
-      - name: Build and test Generation 1 distributions
-        run: ./gradlew --no-daemon --max-workers=2 clean build :legacy-fabric:prepareModCompatibility :ornithe:prepareModCompatibility
-      - name: Build Ornithe Generation 2
-        run: ./gradlew --no-daemon --max-workers=2 -PlvbOrnitheGeneration=2 :ornithe:clean :ornithe:build :ornithe:prepareModCompatibility
+      - name: Build and test all distributions
+        run: ./gradlew --no-daemon --max-workers=2 clean build prepareModCompatibility
       - name: Verify production clients and generation boundaries
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
@@ -82,7 +80,7 @@ jobs:
             legacy-fabric/build/reports/smoke-test.txt
             legacy-fabric/build/reports/client.json
             legacy-fabric/build/reports/*SmokeTest/
-            ornithe/build/gen*/reports/
+            ornithe/gen*/build/reports/
             build/client-tests/**/result.json
             build/client-tests/**/smoke.txt
             build/client-tests/**/console.log

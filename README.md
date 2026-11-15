@@ -35,17 +35,17 @@ Install JDK 21 and Python 3.10+, then run:
 
 ```sh
 ./gradlew clean build
-./gradlew -PlvbOrnitheGeneration=2 :ornithe:build
-./gradlew verifyDistributions
 ```
 
 Gradle selects JDK 21 for the build and JDK 8 for tests and development clients. Missing
 JDKs are downloaded automatically and cached in Gradle's user home. The first build
 requires network access. IntelliJ IDEA uses the same settings when the project is
 imported with the Gradle wrapper.
+Both Ornithe generations are available in the same import as `ornithe:gen1` and
+`ornithe:gen2`, each with its own Minecraft mappings, OSL dependencies and client task.
 
 The build produces separate remapped JARs in `legacy-fabric/build/libs`,
-`ornithe/build/gen1/libs` and `ornithe/build/gen2/libs`. The projects share their core
+`ornithe/gen1/build/libs` and `ornithe/gen2/build/libs`. The projects share their core
 logic and assets. Read
 [CONTRIBUTING.md](CONTRIBUTING.md) for development commands and testing,
 [architecture](docs/architecture.md) for module boundaries, and

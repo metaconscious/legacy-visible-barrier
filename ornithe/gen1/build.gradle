@@ -1,0 +1,5 @@
+plugins {
+    id 'net.fabricmc.fabric-loom-remap'
+    id 'ploceus'
+    id 'lvb.ornithe-conventions'
+}

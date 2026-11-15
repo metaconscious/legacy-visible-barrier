@@ -31,6 +31,12 @@ Reload the Gradle project after changing build settings; the Gradle JVM criteria
 show Java 21. Delegate builds and tests to Gradle so the compiler, test runtime,
 resource processing, and remapping use the project's configuration.
 
+Both `ornithe:gen1` and `ornithe:gen2` are imported together. Each owns its Java sources,
+Minecraft mappings and OSL classpath. Run `:ornithe:gen1:runClient` or
+`:ornithe:gen2:runClient` from the Gradle tool window to use the provisioned Java 8 runtime.
+Loom also generates separate **Minecraft Client** application configurations for each
+generation. Reload Gradle after updating an existing checkout to this layout.
+
 To refresh the daemon JDK download URLs while retaining Java 21, run
 `./gradlew updateDaemonJvm --jvm-version=21` and commit the generated properties file.
 
@@ -40,25 +46,26 @@ Useful tasks:
 | --- | --- |
 | `./gradlew :core:test` | Domain and lifecycle tests on Java 8 |
 | `./gradlew testReleaseTools` | Release, artifact and compatibility-runner script tests |
-| `./gradlew verifyArtifacts` | Build and inspect Legacy Fabric and the selected Ornithe generation |
-| `./gradlew verifyDistributions` | Inspect all three previously built remapped JARs |
-| `./gradlew smokeTest` | Verify the selected Java 8 development clients in enhanced, native, off and missing-hook profiles |
+| `./gradlew verifyArtifacts` | Build and inspect all three remapped JARs |
+| `./gradlew verifyDistributions` | Alias for all-distribution artifact verification |
+| `./gradlew prepareModCompatibility` | Prepare all three production client fixtures |
+| `./gradlew smokeTest` | Verify all three Java 8 development clients in enhanced, native, off and missing-hook profiles |
 | `./gradlew :legacy-fabric:runClient` | Legacy Fabric development client |
-| `./gradlew :ornithe:runClient` | Ornithe development client |
-| `./gradlew -PlvbOrnitheGeneration=2 :ornithe:runClient` | Ornithe Gen2 development client |
+| `./gradlew :ornithe:gen1:runClient` | Ornithe Gen1 development client |
+| `./gradlew :ornithe:gen2:runClient` | Ornithe Gen2 development client |
 | `./gradlew stageRelease` | Stage verified JARs and a source/hash manifest from a clean checkout |
 
-Final installable JARs are in `legacy-fabric/build/libs`, `ornithe/build/gen1/libs` and
-`ornithe/build/gen2/libs`. Development and
+Final installable JARs are in `legacy-fabric/build/libs`, `ornithe/gen1/build/libs` and
+`ornithe/gen2/build/libs`. Development and
 source JARs are not installation artifacts. `build/distributions` contains the exact
-release files after staging. Selected-target artifact checks write
-`build/reports/artifacts-gen1.json` or `artifacts-gen2.json`; `verifyDistributions`
-writes `build/reports/artifacts.json` for all three targets.
+release files after staging. Artifact checks write `build/reports/artifacts.json`
+for all three targets.
 
-The default Ornithe generation is 1. Use `-PlvbOrnitheGeneration=2` for Gen2 tasks;
-run the two configurations sequentially in one checkout. Mapping-dependent Ornithe
-sources live in `src/gen1/java` and `src/gen2/java`, with matching smoke-test directories.
-Common sources remain in `src/main/java` and `src/smokeTest/java`.
+The root build compiles both Ornithe generations in one invocation. To build one,
+use `:ornithe:gen1:build` or `:ornithe:gen2:build`. Minecraft integration lives in
+each generation's `src/main/java` and `src/smokeTest/java` directories. Shared bootstrap
+code and test helpers live in `ornithe/src/main/java` and `ornithe/src/testFixtures/java`;
+these source sets have no Minecraft dependency.
 
 ## Changes and tests
 
@@ -74,19 +81,18 @@ Validate workflow changes with `actionlint`.
 
 `smokeTest` requires a display. On headless Linux, install Xvfb, `xrandr`, and Mesa OpenGL
 drivers, then run `LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a ./gradlew smokeTest`.
-It uses fresh directories under the selected target's build directory,
+It uses fresh directories under each target's build directory,
 exits automatically, and writes the enhanced report to `reports/smoke-test.txt`
 and `reports/client.json`. Other profiles write to `reports/nativeSmokeTest`,
 `offSmokeTest` and `missingHookSmokeTest`. Test mod classes and resources are excluded
 from distributions.
 
-Full verification builds both configurations, then runs the same client contracts
+Full verification builds all distributions, then runs the same client contracts
 against all three production JARs. The two additional negative launches require early
 rejection of the wrong Ornithe generation. CI runs this sequence before staging:
 
 ```sh
-./gradlew clean build :legacy-fabric:prepareModCompatibility :ornithe:prepareModCompatibility
-./gradlew -PlvbOrnitheGeneration=2 :ornithe:clean :ornithe:build :ornithe:prepareModCompatibility
+./gradlew clean build prepareModCompatibility
 python3 tools/verify_clients.py --output build/client-tests
 ./gradlew verifyDistributions
 ```
@@ -103,7 +109,7 @@ verify that enhanced hooks are absent, barrier pixels and compiled meshes follow
 toggle, and cancelling clicks cause no refresh. Separate fixtures cover a competing
 terrain redirect, contained failure handover and unavailable/off behavior.
 To exercise the explicit full-reload option, run
-`./gradlew :legacy-fabric:runNativeSmokeTest :ornithe:runNativeSmokeTest -PlvbNativeRefresh=reload`. Optional mod fixtures
+`./gradlew :legacy-fabric:runNativeSmokeTest :ornithe:gen1:runNativeSmokeTest :ornithe:gen2:runNativeSmokeTest -PlvbNativeRefresh=reload`. Optional mod fixtures
 check active overlays across toggles and reloads. See [compatibility.md](docs/compatibility.md)
 for the tested combinations.
 
@@ -114,8 +120,7 @@ game classes in the production namespace. Prepare the matching adapter, then sup
 published mod JARs and their dependencies to the isolated runner:
 
 ```sh
-./gradlew :legacy-fabric:prepareModCompatibility :ornithe:prepareModCompatibility
-./gradlew -PlvbOrnitheGeneration=2 :ornithe:prepareModCompatibility
+./gradlew prepareModCompatibility
 python3 tools/test_mod_compatibility.py legacy-fabric \
   --profile build/mod-tests/chunk-borders \
   --mod /path/to/legacy-chunk-borders-1.0.0+1.8.2-1.8.9.jar \

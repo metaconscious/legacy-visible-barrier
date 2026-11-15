@@ -1,5 +1,6 @@
 {
   "legacy-fabric": {
+    "project": ":legacy-fabric",
     "platform": "legacy-fabric",
     "name": "Legacy Fabric generation 1",
     "build_directory": "build",
@@ -14,9 +15,10 @@
     "sentinels": {"ave": "net.minecraft.class_1600", "bfk": "net.minecraft.class_524"}
   },
   "ornithe": {
+    "project": ":ornithe:gen1",
     "platform": "ornithe",
     "name": "Ornithe generation 1",
-    "build_directory": "build/gen1",
+    "build_directory": "gen1/build",
     "generation": 1,
     "mapping_family": "calamus",
     "mapping_build": 28,
@@ -34,9 +36,10 @@
     "sentinels": {"ave": "net.minecraft.unmapped.C_8105098", "bfk": "net.minecraft.unmapped.C_0259655"}
   },
   "ornithe.gen2": {
+    "project": ":ornithe:gen2",
     "platform": "ornithe",
     "name": "Ornithe generation 2",
-    "build_directory": "build/gen2",
+    "build_directory": "gen2/build",
     "generation": 2,
     "mapping_family": "calamus",
     "mapping_build": 2,
